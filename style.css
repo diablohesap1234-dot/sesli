@@ -1274,23 +1274,6 @@ input[type="password"]:focus,
     border: 1px solid var(--border-color);
 }
 
-/* RESPONSIVE */
-@media (max-width: 768px) {
-    .chat-section {
-        position: absolute;
-        right: 0;
-        top: 0;
-        bottom: 0;
-        width: 100%;
-        z-index: 50;
-    }
-    .room-control-dock {
-        padding: 0 12px;
-    }
-    .dock-user-info, .dock-right-actions {
-        width: auto;
-    }
-}
 
 /* ==========================================================================
    TÜNEL & PAYLAŞIM ARAYÜZ STILLERI
@@ -3216,6 +3199,708 @@ body.desktop-mode.compact-mode .user-avatar {
     max-width: 420px;
     border: 1px solid rgba(254, 231, 92, 0.3);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+}
+
+/* ==========================================================================
+   MOBİL VE DOKUNMATİK DUYARLI ARAYÜZ (RESPONSIVE MOBILE ENGINE)
+   ========================================================================== */
+
+/* Ortak Mobil Kontrol Sınıfları */
+.btn-mobile-nav {
+    display: none;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    align-items: center;
+    gap: 6px;
+    transition: var(--transition);
+    position: relative;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn-mobile-nav:active {
+    transform: scale(0.96);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-mobile-chat {
+    background: rgba(88, 101, 242, 0.15);
+    border-color: rgba(88, 101, 242, 0.4);
+    color: #ffffff;
+}
+
+.chat-unread-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 9px;
+    height: 9px;
+    background: var(--danger);
+    border: 1.5px solid #111214;
+    border-radius: 50%;
+    animation: speakPulse 1.2s infinite alternate;
+}
+
+.btn-close-sidebar {
+    display: none;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+}
+
+.channels-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    z-index: 80;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.channels-backdrop.active {
+    display: block;
+}
+
+.mobile-chat-header {
+    display: none;
+    height: 48px;
+    background: rgba(20, 21, 25, 0.98);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 12px;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.btn-back-chat {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-sm);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: var(--transition);
+}
+
+.btn-back-chat:active {
+    background: rgba(255, 255, 255, 0.18);
+    transform: scale(0.96);
+}
+
+.mobile-chat-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   TABLET & MOBİL MEDYA SORGULARI (max-width: 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+    /* Genel Görünüm ve Ekran Yüksekliği */
+    html, body, #app {
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    .screen-view {
+        height: 100%;
+        height: 100dvh;
+    }
+
+    /* Masaüstü Özel Başlık Çubuğunu Mobilde Gizle */
+    #desktop-custom-titlebar {
+        display: none !important;
+    }
+
+    /* Üst Navbar */
+    .room-navbar {
+        height: 52px;
+        padding: 0 10px;
+        gap: 6px;
+    }
+
+    .room-nav-left {
+        gap: 6px;
+    }
+
+    .btn-mobile-nav {
+        display: inline-flex;
+    }
+
+    .mini-brand-text {
+        display: none;
+    }
+
+    .room-title {
+        max-width: 90px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+    }
+
+    .user-count-badge {
+        padding: 2px 6px;
+        font-size: 11px;
+    }
+
+    .latency-indicator {
+        padding: 3px 6px;
+        font-size: 11px;
+    }
+
+    .room-nav-right {
+        gap: 6px;
+    }
+
+    .btn-pwa-nav {
+        display: none !important;
+    }
+
+    #copy-btn-text,
+    #btn-leave-room span {
+        display: none;
+    }
+
+    #btn-copy-link,
+    #btn-leave-room,
+    #btn-settings-toggle {
+        padding: 7px 9px;
+        min-width: 36px;
+        min-height: 36px;
+        justify-content: center;
+    }
+
+    /* Ana Alan (Room Main) */
+    .room-main {
+        position: relative;
+        flex: 1;
+        height: calc(100dvh - 52px - 64px);
+        overflow: hidden;
+    }
+
+    /* Sol Çekmece (Channels Sidebar Drawer) */
+    .channels-sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 280px;
+        max-width: 82vw;
+        background: #141518;
+        border-right: 1px solid var(--border-color);
+        z-index: 90;
+        transform: translateX(-100%);
+        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: 6px 0 28px rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .channels-sidebar.drawer-open {
+        transform: translateX(0);
+    }
+
+    .btn-close-sidebar {
+        display: block;
+    }
+
+    .channels-sidebar-header {
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    /* Mobil Hızlı Kanal Geçiş Şeridi */
+    .mobile-channel-strip {
+        display: flex !important;
+        padding: 6px 10px;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+
+    .strip-label {
+        font-size: 11px;
+    }
+
+    .strip-buttons {
+        gap: 4px;
+    }
+
+    .strip-btn {
+        padding: 4px 9px;
+        font-size: 11px;
+    }
+
+    /* Orta Alan (Voice Section) */
+    .voice-section {
+        width: 100%;
+        height: 100%;
+        padding: 10px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Sesli Kullanıcı Kartları Izgarası (Voice Grid) */
+    .voice-grid {
+        width: 100%;
+        height: auto;
+        max-height: none;
+        gap: 10px;
+        align-content: flex-start;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    }
+
+    .voice-grid[data-count="1"] {
+        grid-template-columns: minmax(0, 360px) !important;
+        margin: auto;
+    }
+
+    .voice-grid[data-count="2"],
+    .voice-grid[data-count="3"],
+    .voice-grid[data-count="4"],
+    .voice-grid[data-count="5"],
+    .voice-grid[data-count="6"] {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .user-card {
+        padding: 12px 10px;
+        aspect-ratio: auto;
+        min-height: 140px;
+        border-radius: var(--radius-sm);
+    }
+
+    .user-avatar {
+        width: 60px;
+        height: 60px;
+        font-size: 24px;
+    }
+
+    .card-badges {
+        top: 8px;
+        right: 8px;
+        gap: 4px;
+    }
+
+    .card-badge-icon {
+        width: 22px;
+        height: 22px;
+        font-size: 11px;
+    }
+
+    .card-username {
+        font-size: 13px;
+        gap: 4px;
+    }
+
+    .tag-you {
+        font-size: 10px;
+        padding: 1px 4px;
+    }
+
+    .peer-volume-control {
+        padding: 2px 6px;
+        gap: 6px;
+    }
+
+    .peer-volume-icon {
+        font-size: 10px;
+    }
+
+    .peer-volume-val {
+        font-size: 10px;
+        min-width: 26px;
+    }
+
+    /* Canlı Yayın Sahnesi (Shared Browser Stage) */
+    .shared-browser-stage {
+        max-height: calc(100dvh - 124px);
+        border-radius: var(--radius-sm);
+    }
+
+    .stage-topbar {
+        padding: 4px 8px;
+        min-height: 42px;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .stage-brand-meta {
+        gap: 1px;
+    }
+
+    .stage-brand-title {
+        font-size: 10px;
+    }
+
+    .stage-ctrl-badge {
+        font-size: 9px;
+        max-width: 100px;
+    }
+
+    .stage-topbar-right {
+        gap: 4px;
+    }
+
+    .btn-stage-pill {
+        padding: 4px 8px;
+        font-size: 10px;
+    }
+
+    .stage-empty-view {
+        padding: 14px 10px;
+    }
+
+    .empty-view-card {
+        padding: 18px 14px;
+    }
+
+    .empty-view-icon {
+        font-size: 32px;
+        margin-bottom: 6px;
+    }
+
+    .empty-view-card h3 {
+        font-size: 15px;
+        margin-bottom: 6px;
+    }
+
+    .empty-desc {
+        font-size: 11px;
+        margin-bottom: 12px;
+    }
+
+    .btn-stream-main {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .btn-subtext {
+        font-size: 10px;
+    }
+
+    .empty-info-box {
+        padding: 8px 10px;
+        margin-top: 12px !important;
+    }
+
+    .empty-info-box p {
+        font-size: 11px;
+    }
+
+    .stage-dock-strip {
+        min-height: 52px;
+        padding: 4px 10px;
+        gap: 8px;
+    }
+
+    .stage-speaker-pill {
+        padding: 3px 8px 3px 3px;
+        gap: 6px;
+    }
+
+    .stage-speaker-avatar {
+        width: 24px;
+        height: 24px;
+        font-size: 11px;
+    }
+
+    .stage-speaker-name {
+        font-size: 11px;
+    }
+
+    /* Sağ Yazılı Sohbet Paneli (Chat Panel) */
+    .chat-section {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        z-index: 95;
+        background: #111214;
+        display: flex;
+        flex-direction: column;
+        transform: translateX(100%);
+        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+        border-left: none;
+    }
+
+    .chat-section.chat-open {
+        transform: translateX(0);
+    }
+
+    .mobile-chat-header {
+        display: flex;
+    }
+
+    .chat-tabs-bar {
+        padding: 4px 8px;
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-shrink: 0;
+    }
+
+    .chat-tab {
+        padding: 4px 10px;
+        font-size: 12px;
+    }
+
+    .chat-messages {
+        flex: 1;
+        padding: 12px 10px;
+        gap: 10px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .chat-msg-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+
+    .chat-msg-sender {
+        font-size: 12px;
+    }
+
+    .chat-msg-time {
+        font-size: 10px;
+    }
+
+    .chat-msg-text {
+        font-size: 13px;
+    }
+
+    .chat-input-bar {
+        padding: 8px 10px;
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+        gap: 6px;
+        background: #18191c;
+    }
+
+    #chat-input {
+        font-size: 16px !important; /* iOS oto-zoom engelleme */
+        padding: 8px 12px;
+    }
+
+    .btn-attach {
+        width: 38px;
+        height: 38px;
+        font-size: 16px;
+    }
+
+    .btn-send {
+        width: 38px;
+        height: 38px;
+    }
+
+    /* Emoji Seçici Mobilde Bottom Sheet */
+    .chat-emoji-picker {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        z-index: 105;
+        max-height: 50vh;
+        box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(26, 27, 31, 0.98);
+        animation: slideUpSheet 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideUpSheet {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+    }
+
+    .emoji-grid {
+        max-height: 200px;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+        padding: 8px 10px;
+    }
+
+    .emoji-item {
+        font-size: 22px;
+        height: 38px;
+    }
+
+    /* Alt Kontrol Paneli (Dock) */
+    .room-control-dock {
+        height: auto;
+        min-height: 60px;
+        padding: 8px 10px;
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+        gap: 6px;
+        justify-content: space-between;
+    }
+
+    .dock-user-info {
+        width: auto;
+        gap: 6px;
+    }
+
+    .dock-avatar {
+        width: 34px;
+        height: 34px;
+        font-size: 14px;
+    }
+
+    .dock-status {
+        display: none;
+    }
+
+    .dock-username {
+        max-width: 60px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+    }
+
+    .dock-center-controls {
+        gap: 6px;
+    }
+
+    .dock-btn {
+        padding: 8px 10px;
+        min-width: 44px;
+        min-height: 44px;
+        justify-content: center;
+        border-radius: var(--radius-sm);
+    }
+
+    #mic-label,
+    #deafen-label,
+    .kbd-hint {
+        display: none !important;
+    }
+
+    .dock-btn-small {
+        padding: 8px 10px;
+        min-height: 44px;
+        min-width: 44px;
+        justify-content: center;
+    }
+
+    #mode-text {
+        display: none;
+    }
+
+    .dock-right-actions {
+        width: auto;
+    }
+
+    .dock-btn-icon-only {
+        width: 44px;
+        height: 44px;
+        position: relative;
+    }
+
+    /* Lobi Ekranı */
+    #lobby-screen {
+        padding: 14px 10px;
+        align-items: flex-start;
+        overflow-y: auto;
+    }
+
+    .lobby-card {
+        width: 100%;
+        max-width: 390px;
+        padding: 20px 16px;
+        margin: auto;
+    }
+
+    .lobby-logo {
+        width: 64px;
+        height: 64px;
+    }
+
+    .lobby-card h1 {
+        font-size: 20px;
+    }
+
+    .lobby-subtitle {
+        font-size: 12px;
+    }
+
+    .form-input {
+        font-size: 16px !important;
+        padding: 10px 12px;
+    }
+
+    .avatar-picker-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        justify-items: center;
+    }
+
+    .color-swatch {
+        width: 32px;
+        height: 32px;
+    }
+
+    #btn-join {
+        padding: 12px;
+        font-size: 15px;
+    }
+
+    /* Modallar */
+    .modal-card {
+        width: 94vw;
+        max-width: 400px;
+        padding: 18px 14px;
+        max-height: 85vh;
+        overflow-y: auto;
+    }
+}
+
+/* Küçük Telefonlar (max-width: 400px) */
+@media (max-width: 400px) {
+    .channel-tag {
+        display: none;
+    }
+
+    .voice-grid[data-count="2"],
+    .voice-grid[data-count="3"],
+    .voice-grid[data-count="4"],
+    .voice-grid[data-count="5"],
+    .voice-grid[data-count="6"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    .dock-username {
+        display: none;
+    }
+
+    .dock-btn {
+        padding: 8px;
+    }
 }
 
 

@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>AGALAR SESLİ SOHBET</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -206,6 +206,10 @@
             <!-- ÜST BİLGİ ÇUBUĞU -->
             <header class="room-navbar">
                 <div class="room-nav-left">
+                    <button type="button" id="btn-mobile-channels-toggle" class="btn-mobile-nav" title="Ses Odaları Listesi">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-text">Odalar</span>
+                    </button>
                     <div class="brand-badge-mini" title="AGALAR SESLİ SOHBET">
                         <img src="/static/logo.png" alt="AGALAR" class="mini-logo">
                         <span class="mini-brand-text">AGALAR</span>
@@ -228,6 +232,12 @@
                 </div>
 
                 <div class="room-nav-right">
+                    <button id="btn-mobile-chat-toggle" class="btn-mobile-nav btn-mobile-chat" title="Yazılı Sohbeti Aç">
+                        <span class="nav-icon">💬</span>
+                        <span class="nav-text">Sohbet</span>
+                        <span id="mobile-chat-unread-dot" class="chat-unread-dot hidden"></span>
+                    </button>
+
                     <button id="btn-pwa-install-nav" class="btn-pwa-nav hidden" title="Masaüstü Uygulaması Olarak Yükle">
                         <span>🖥️ Masaüstüne Yükle</span>
                     </button>
@@ -261,6 +271,7 @@
                 <aside class="channels-sidebar" id="channels-sidebar">
                     <div class="channels-sidebar-header">
                         <span class="channels-cat-title">🔊 SES ODALARI</span>
+                        <button type="button" id="btn-close-channels-sidebar" class="btn-close-sidebar" title="Kapat">✕</button>
                     </div>
                     <div class="voice-channels-list" id="voice-channels-list">
                         <!-- 5 Ses Kanalı -->
@@ -310,6 +321,7 @@
                         </div>
                     </div>
                 </aside>
+                <div id="channels-backdrop" class="channels-backdrop hidden"></div>
 
                 <!-- 2. ORTA: AKTİF KANALIN SESLİ KULLANICI KARTLARI -->
                 <section class="voice-section" id="voice-section">
@@ -399,6 +411,17 @@
 
                 <!-- SAĞ ALAN: YAZILI SOHBET (GENEL & DM KANALLARI) -->
                 <aside class="chat-section" id="chat-section">
+                    <!-- MOBİL CHAT ÜST ÇUBUĞU (SES ODASINA GERİ DÖN) -->
+                    <div class="mobile-chat-header" id="mobile-chat-header">
+                        <button type="button" id="btn-back-from-chat" class="btn-back-chat" title="Ses Odasına Geri Dön">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M19 12H5M12 19l-7-7 7-7"/>
+                            </svg>
+                            <span>Ses Odası</span>
+                        </button>
+                        <span class="mobile-chat-title" id="mobile-chat-title"># genel-sohbet</span>
+                    </div>
+
                     <!-- SOHBET SEKMELERİ (CHANNELS & DMS) -->
                     <div class="chat-tabs-bar" id="chat-tabs-bar">
                         <button type="button" class="chat-tab active" data-tab="general" id="tab-general">
@@ -506,7 +529,8 @@
 
                 <div class="dock-right-actions">
                     <button id="btn-chat-toggle" class="dock-btn-icon-only active" title="Sohbet Panelini Gizle/Göster">
-                        💬
+                        <span class="dock-icon">💬</span>
+                        <span id="dock-chat-unread-dot" class="chat-unread-dot hidden"></span>
                     </button>
                 </div>
             </footer>
