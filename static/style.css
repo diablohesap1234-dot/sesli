@@ -1658,6 +1658,113 @@ input[type="password"]:focus,
     transform: scale(1.02);
 }
 
+/* ==========================================================================
+   EMOJİ SEÇİCİ POPUP (CHAT EMOJI PICKER)
+   ========================================================================== */
+.chat-emoji-picker {
+    position: absolute;
+    bottom: 60px;
+    right: 12px;
+    width: 290px;
+    background: #18191c;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.emoji-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.emoji-picker-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.emoji-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: var(--transition);
+}
+
+.emoji-close-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.emoji-nav-tabs {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.25);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 4px 6px;
+    gap: 4px;
+}
+
+.emoji-nav-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    padding: 4px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.emoji-nav-tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.emoji-nav-tab.active {
+    background: rgba(88, 101, 242, 0.25);
+    box-shadow: 0 0 6px rgba(88, 101, 242, 0.4);
+}
+
+.emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    padding: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.emoji-btn {
+    background: transparent;
+    border: none;
+    font-size: 20px;
+    line-height: 1;
+    padding: 6px 2px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.emoji-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: scale(1.25);
+}
+
 .chat-msg-img {
     width: 100%;
     max-height: 220px;
@@ -2597,6 +2704,51 @@ body.desktop-mode.compact-mode .user-avatar {
     white-space: nowrap;
 }
 
+/* TARAYICI GEZİNME BUTONLARI (Geri, İleri, Yenile, Google) */
+.stage-nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+}
+
+.btn-stage-nav {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.btn-stage-nav:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
+}
+
+.btn-stage-home {
+    width: auto;
+    padding: 0 9px;
+    background: rgba(66, 133, 244, 0.15);
+    border-color: rgba(66, 133, 244, 0.35);
+    color: #8ab4f8;
+    font-size: 11px;
+}
+
+.btn-stage-home:hover {
+    background: rgba(66, 133, 244, 0.3);
+    border-color: #8ab4f8;
+    color: #ffffff;
+}
+
 /* URL FORM VE GİRİŞ ALANI */
 .stage-url-form {
     flex: 1;
@@ -2780,11 +2932,24 @@ body.desktop-mode.compact-mode .user-avatar {
     font-size: 18px;
     font-weight: 800;
     color: #ffffff;
-    margin-bottom: 14px;
+    margin-bottom: 8px;
+}
+
+.empty-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 18px;
 }
 
 .empty-stream-cta {
     margin-bottom: 14px;
+}
+
+.btn-stage-stream-toggle.active-danger {
+    background: rgba(242, 63, 67, 0.25) !important;
+    border-color: rgba(242, 63, 67, 0.6) !important;
+    color: #ffffff !important;
 }
 
 .btn-stream-main {
@@ -2833,6 +2998,68 @@ body.desktop-mode.compact-mode .user-avatar {
     color: #FEE75C;
 }
 
+/* BAŞLANGIÇ EKRANI GOOGLE ARAMA FORMU */
+.empty-search-form {
+    width: 100%;
+    margin: 16px 0 14px 0;
+}
+
+.empty-search-wrap {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1.5px solid rgba(88, 101, 242, 0.4);
+    border-radius: var(--radius-full);
+    padding: 4px 6px 4px 14px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    transition: var(--transition);
+}
+
+.empty-search-wrap:focus-within {
+    border-color: #8ab4f8;
+    box-shadow: 0 0 16px rgba(66, 133, 244, 0.4);
+}
+
+.empty-search-icon {
+    font-size: 15px;
+    margin-right: 8px;
+    opacity: 0.7;
+}
+
+#empty-search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #ffffff;
+    font-family: var(--font);
+    font-size: 13px;
+    padding: 8px 0;
+}
+
+#empty-search-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.empty-search-btn {
+    background: #4285F4;
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-full);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.empty-search-btn:hover {
+    background: #1a73e8;
+    box-shadow: 0 2px 10px rgba(66, 133, 244, 0.5);
+}
+
 .empty-view-shortcuts {
     display: flex;
     flex-wrap: wrap;
@@ -2862,6 +3089,28 @@ body.desktop-mode.compact-mode .user-avatar {
 .empty-chip:hover {
     background: var(--primary);
     transform: translateY(-1px);
+}
+
+.chip-google {
+    background: rgba(66, 133, 244, 0.15) !important;
+    border-color: rgba(66, 133, 244, 0.35) !important;
+    color: #8ab4f8 !important;
+}
+
+.chip-google:hover {
+    background: #4285F4 !important;
+    color: #ffffff !important;
+}
+
+.chip-dizi {
+    background: rgba(254, 231, 92, 0.15) !important;
+    border-color: rgba(254, 231, 92, 0.35) !important;
+    color: #FEE75C !important;
+}
+
+.chip-dizi:hover {
+    background: #FEE75C !important;
+    color: #111214 !important;
 }
 
 /* WEBRTC SEKME CANLI YAYINI */

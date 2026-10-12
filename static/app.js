@@ -184,6 +184,10 @@ const el = {
     tabGeneral: document.getElementById('tab-general'),
     chatFileInput: document.getElementById('chat-file-input'),
     btnAttachImage: document.getElementById('btn-attach-image'),
+    btnToggleEmoji: document.getElementById('btn-toggle-emoji'),
+    chatEmojiPicker: document.getElementById('chat-emoji-picker'),
+    btnCloseEmoji: document.getElementById('btn-close-emoji'),
+    emojiGrid: document.getElementById('emoji-grid'),
     imageStagingBox: document.getElementById('image-staging-box'),
     stagedImagePreview: document.getElementById('staged-image-preview'),
     btnCancelStagedImg: document.getElementById('btn-cancel-staged-img'),
@@ -210,22 +214,17 @@ const el = {
     compactText: document.getElementById('compact-text'),
     dtChannelIndicator: document.getElementById('dt-channel-indicator'),
 
-    // Ortak Tarayıcı & Sinema Sahnesi
+    // Canlı Dizi, Film & Ekran Sahnesi
     voiceSection: document.getElementById('voice-section'),
     btnSharedBrowserToggle: document.getElementById('btn-shared-browser-toggle'),
     sharedBrowserStage: document.getElementById('shared-browser-stage'),
     stageControllerBadge: document.getElementById('stage-controller-badge'),
-    stageUrlForm: document.getElementById('stage-url-form'),
-    stageUrlInput: document.getElementById('stage-url-input'),
-    btnStageLoadUrl: document.getElementById('btn-stage-load-url'),
     btnStageShareScreen: document.getElementById('btn-stage-share-screen'),
     btnStageRequestCtrl: document.getElementById('btn-stage-request-ctrl'),
     btnStageFullscreen: document.getElementById('btn-stage-fullscreen'),
     btnStageClose: document.getElementById('btn-stage-close'),
     stageEmptyView: document.getElementById('stage-empty-view'),
     btnEmptyStartStream: document.getElementById('btn-empty-start-stream'),
-    stageIframe: document.getElementById('stage-iframe'),
-    stageVideo: document.getElementById('stage-video'),
     stageStreamWrap: document.getElementById('stage-stream-wrap'),
     stageStreamVideo: document.getElementById('stage-stream-video'),
     stageDockStrip: document.getElementById('stage-dock-strip'),
@@ -929,13 +928,42 @@ function createPeerConnection(peerId, isInitiator) {
                 el.stageStreamVideo.srcObject = remoteVideoStream;
                 el.stageStreamVideo.play().catch(e => console.warn("Stream video play error:", e));
             }
+
+            // Sahneyi izleyiciler için otomatik olarak aç
+            if (el.voiceSection) el.voiceSection.classList.add('cinema-active');
+            if (el.sharedBrowserStage) el.sharedBrowserStage.classList.remove('hidden');
+            if (el.stageEmptyView) el.stageEmptyView.classList.add('hidden');
+            if (el.stageStreamWrap) el.stageStreamWrap.classList.remove('hidden');
+            if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.add('active');
+
+            event.track.onended = () => {
+                if (el.stageStreamVideo) el.stageStreamVideo.srcObject = null;
+                if (el.stageStreamWrap) el.stageStreamWrap.classList.add('hidden');
+                if (el.stageEmptyView) el.stageEmptyView.classList.remove('hidden');
+            };
             return;
         }
 
         console.log(`[WebRTC] ${peerId} ses akışı başarıyla alındı:`, event);
-        const remoteStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
-        audioEl.srcObject = remoteStream;
+        if (event.streams && event.streams[0]) {
+            if (audioEl.srcObject && audioEl.srcObject !== event.streams[0]) {
+                try {
+                    audioEl.srcObject.addTrack(event.track);
+                } catch(e) {
+                    audioEl.srcObject = event.streams[0];
+                }
+            } else {
+                audioEl.srcObject = event.streams[0];
+            }
+        } else {
+            if (!audioEl.srcObject) {
+                audioEl.srcObject = new MediaStream([event.track]);
+            } else {
+                audioEl.srcObject.addTrack(event.track);
+            }
+        }
 
+        const remoteStream = audioEl.srcObject;
         const playPromise = audioEl.play();
         if (playPromise !== undefined) {
             playPromise.then(() => {
@@ -1707,6 +1735,91 @@ function closeLightbox() {
 }
 
 // ============================================================================
+// 8.5 SOHBET EMOJİ SEÇİCİ (CHAT EMOJI PICKER)
+// ============================================================================
+const EMOJI_CATEGORIES = {
+    faces: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '😉', '😌', '😍', '🥰', '😘', '😋', '😛', '😜', '🤪', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖'],
+    hands: ['👍', '👎', '👏', '🙌', '👐', '🤲', '🤝', '🤜', '🤛', '✊', '👊', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '💪', '🖕', '🙏', '✍️', '💅', '🤳'],
+    popular: ['🔥', '💯', '✨', '⭐', '🌟', '💥', '⚡', '🌈', '☀️', '🌙', '👑', '💎', '🏆', '🥇', '🥈', '🥉', '🎉', '🎊', '🎈', '🎁', '🚀', '💣', '🎯', '🎲', '🧿', '👀', '👁️', '🧠', '🫀', '🫁'],
+    gaming: ['🎮', '🕹️', '🍿', '🎬', '📺', '🎧', '🎤', '🎵', '🎶', '🎸', '🎹', '⚽', '🏀', '🏈', '🥊', '🥋', '🏎️', '🚗', '🍕', '🍔', '🍟', '🌭', '🍩', '🍫', '🍻', '🍺', '☕'],
+    hearts: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝']
+};
+
+let activeEmojiCat = 'faces';
+
+function initEmojiPicker() {
+    renderEmojiGrid(activeEmojiCat);
+
+    document.querySelectorAll('.emoji-nav-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.emoji-nav-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            activeEmojiCat = tab.getAttribute('data-cat') || 'faces';
+            renderEmojiGrid(activeEmojiCat);
+        });
+    });
+
+    if (el.btnToggleEmoji) {
+        el.btnToggleEmoji.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (el.chatEmojiPicker) {
+                el.chatEmojiPicker.classList.toggle('hidden');
+            }
+        });
+    }
+
+    if (el.btnCloseEmoji) {
+        el.btnCloseEmoji.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (el.chatEmojiPicker) {
+                el.chatEmojiPicker.classList.add('hidden');
+            }
+        });
+    }
+
+    // Tıklama dışarıdaysa emoji menüsünü kapat
+    document.addEventListener('click', (e) => {
+        if (el.chatEmojiPicker && !el.chatEmojiPicker.classList.contains('hidden')) {
+            if (!el.chatEmojiPicker.contains(e.target) && e.target !== el.btnToggleEmoji) {
+                el.chatEmojiPicker.classList.add('hidden');
+            }
+        }
+    });
+}
+
+function renderEmojiGrid(catKey) {
+    if (!el.emojiGrid) return;
+    el.emojiGrid.innerHTML = '';
+    const emojis = EMOJI_CATEGORIES[catKey] || EMOJI_CATEGORIES.faces;
+
+    emojis.forEach(emoji => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'emoji-btn';
+        btn.textContent = emoji;
+        btn.title = emoji;
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            insertEmojiToChat(emoji);
+        });
+        el.emojiGrid.appendChild(btn);
+    });
+}
+
+function insertEmojiToChat(emoji) {
+    if (!el.chatInput) return;
+    const input = el.chatInput;
+    const start = input.selectionStart != null ? input.selectionStart : input.value.length;
+    const end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
+    const text = input.value;
+    input.value = text.substring(0, start) + emoji + text.substring(end);
+    input.focus();
+    const newPos = start + emoji.length;
+    input.setSelectionRange(newPos, newPos);
+}
+
+// ============================================================================
 // 9. YARDIMCI VE ARAYÜZ FONKSİYONLARI
 // ============================================================================
 function switchToRoomUI() {
@@ -2037,89 +2150,12 @@ function escapeHtml(str) {
 }
 
 // ============================================================================
-// 9.5 ORTAK TARAYICI & BİRLİKTE DİZİ/VİDEO İZLEME (SİNEMA MODU)
+// 9.5 CANLI DİZİ, FİLM & EKRAN YAYINI (WEBRTC CANLI YAYIN MODU)
 // ============================================================================
 
-function parseYouTubeUrl(url) {
-    if (!url) return null;
-    const u = url.trim();
-
-    // YouTube ana sayfası veya sadece 'youtube' yazılmışsa -> Arama listesi embed'i aç!
-    const clean = u.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '');
-    if (clean === 'youtube.com' || clean === 'm.youtube.com' || clean === 'youtube') {
-        return `https://www.youtube-nocookie.com/embed?listType=search&list=film%20ve%20dizi`;
-    }
-
-    // 1. Standart video ID (watch?v=, youtu.be/, shorts/, embed/)
-    const match = u.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|shorts\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
-    if (match && match[1]) {
-        return `https://www.youtube-nocookie.com/embed/${match[1]}?autoplay=1&enablejsapi=1&rel=0`;
-    }
-
-    // 2. Oynatma Listesi (playlist?list=...)
-    const matchPlaylist = u.match(/[?&]list=([a-zA-Z0-9_-]+)/);
-    if (matchPlaylist && matchPlaylist[1]) {
-        return `https://www.youtube-nocookie.com/embed/videoseries?list=${matchPlaylist[1]}&autoplay=1`;
-    }
-
-    // 3. YouTube Arama Linki (youtube.com/results?search_query=...)
-    const matchSearch = u.match(/[?&]search_query=([^&]+)/);
-    if (matchSearch && matchSearch[1]) {
-        return `https://www.youtube-nocookie.com/embed?listType=search&list=${matchSearch[1]}&autoplay=1`;
-    }
-
-    return null;
-}
-
-function isDirectVideoUrl(url) {
-    if (!url) return false;
-    const cleanUrl = url.split('?')[0].toLowerCase();
-    return cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.m3u8') || cleanUrl.endsWith('.ogg') || cleanUrl.endsWith('.mov');
-}
-
-function resolveMediaUrl(url) {
-    if (!url) return { url: '', mode: 'embed' };
-    let target = url.trim();
-
-    // 1. Doğrudan video dosyası (.mp4, .webm, .m3u8)
-    if (isDirectVideoUrl(target)) {
-        return { url: target, mode: 'video' };
-    }
-
-    // 2. YouTube videosu, oynatma listesi veya YouTube ana sayfası
-    const ytEmbed = parseYouTubeUrl(target);
-    if (ytEmbed) {
-        return { url: ytEmbed, mode: 'embed' };
-    }
-
-    // 3. Eğer kullanıcı direkt arama kelimesi yazdıysa (örn: "kurtlar vadisi", "avatar")
-    if (!target.includes('.') && !target.startsWith('http')) {
-        return {
-            url: `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(target)}&autoplay=1`,
-            mode: 'embed'
-        };
-    }
-
-    // 4. Protokol eksikse https ekle
-    if (!target.startsWith('http://') && !target.startsWith('https://')) {
-        target = 'https://' + target;
-    }
-
-    // 5. DuckDuckGo doğrudan iframe destekler
-    if (target.includes('duckduckgo.com')) {
-        return { url: target, mode: 'embed' };
-    }
-
-    // 6. Google veya diğer web siteleri (X-Frame-Options engelini aşmak için dahili proxy üzerinden açılır)
-    return {
-        url: `/api/proxy?url=${encodeURIComponent(target)}`,
-        mode: 'embed'
-    };
-}
-
-function openSharedBrowser(url = '', mode = 'embed') {
+function openSharedBrowser(url = 'CANLI_YAYIN', mode = 'stream') {
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
-        alert("Ortak tarayıcıyı açmak için önce bir odaya bağlı olmalısınız.");
+        alert("Canlı yayın sahnesini açmak için önce bir odaya bağlı olmalısınız.");
         return;
     }
     state.ws.send(JSON.stringify({
@@ -2144,13 +2180,13 @@ function handleBrowserStateUpdate(bState) {
     state.sharedBrowser.active = !!bState.active;
     state.sharedBrowser.controllerId = bState.controller_id;
     state.sharedBrowser.controllerName = bState.controller_name;
-    state.sharedBrowser.mode = bState.mode || 'embed';
+    state.sharedBrowser.mode = bState.mode || 'stream';
     state.sharedBrowser.url = bState.url || '';
 
     const isController = (state.sharedBrowser.controllerId === state.myId);
 
     if (state.sharedBrowser.active) {
-        // Sinema sahnesini aç
+        // Canlı yayın sahnesini aç
         if (el.voiceSection) el.voiceSection.classList.add('cinema-active');
         if (el.sharedBrowserStage) el.sharedBrowserStage.classList.remove('hidden');
         if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.add('active');
@@ -2161,45 +2197,39 @@ function handleBrowserStateUpdate(bState) {
                 el.stageControllerBadge.textContent = "👑 Yönetici: Sen";
                 el.stageControllerBadge.style.color = "#FEE75C";
             }
-            if (el.stageUrlInput) {
-                el.stageUrlInput.removeAttribute('disabled');
-                el.stageUrlInput.value = state.sharedBrowser.url || '';
+            if (el.btnStageShareScreen) {
+                el.btnStageShareScreen.style.display = '';
+                if (state.sharedBrowser.screenStream) {
+                    el.btnStageShareScreen.textContent = '⏹️ Yayını Durdur';
+                    el.btnStageShareScreen.classList.add('active-danger');
+                } else {
+                    el.btnStageShareScreen.textContent = '🖥️ Yayını Başlat';
+                    el.btnStageShareScreen.classList.remove('active-danger');
+                }
             }
-            if (el.btnStageLoadUrl) el.btnStageLoadUrl.style.display = '';
-            if (el.btnStageShareScreen) el.btnStageShareScreen.style.display = '';
             if (el.btnStageRequestCtrl) el.btnStageRequestCtrl.classList.add('hidden');
             if (el.btnStageClose) el.btnStageClose.style.display = '';
         } else {
             const ctrlName = state.sharedBrowser.controllerName || "Biri";
             if (el.stageControllerBadge) {
-                el.stageControllerBadge.textContent = `👑 Yöneten: ${ctrlName}`;
+                el.stageControllerBadge.textContent = `👑 Yayıncı: ${ctrlName}`;
                 el.stageControllerBadge.style.color = "#00B0F4";
             }
-            if (el.stageUrlInput) {
-                el.stageUrlInput.setAttribute('disabled', 'true');
-                el.stageUrlInput.value = state.sharedBrowser.url ? `İzleniyor: ${state.sharedBrowser.url}` : '';
-            }
-            if (el.btnStageLoadUrl) el.btnStageLoadUrl.style.display = 'none';
             if (el.btnStageShareScreen) el.btnStageShareScreen.style.display = 'none';
             if (el.btnStageRequestCtrl) el.btnStageRequestCtrl.classList.remove('hidden');
             if (el.btnStageClose) el.btnStageClose.style.display = 'none';
         }
 
-        // Medya görüntüleyiciyi ayarla
+        // Medya durumunu güncelle
         updateStageMediaView(state.sharedBrowser.url, state.sharedBrowser.mode);
         renderStageSpeakers();
     } else {
-        // Sinema sahnesini kapat
+        // Canlı yayın sahnesini kapat
         if (el.voiceSection) el.voiceSection.classList.remove('cinema-active');
         if (el.sharedBrowserStage) el.sharedBrowserStage.classList.add('hidden');
         if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.remove('active');
 
-        // Medyaları durdur ve temizle
-        if (el.stageIframe) el.stageIframe.src = '';
-        if (el.stageVideo) {
-            el.stageVideo.pause();
-            el.stageVideo.src = '';
-        }
+        // Canlı video akışını durdur ve temizle
         if (el.stageStreamVideo) {
             el.stageStreamVideo.pause();
             el.stageStreamVideo.srcObject = null;
@@ -2212,53 +2242,14 @@ function handleBrowserStateUpdate(bState) {
 
 function updateStageMediaView(url, mode) {
     if (el.stageEmptyView) el.stageEmptyView.classList.add('hidden');
-    if (el.stageIframe) el.stageIframe.classList.add('hidden');
-    if (el.stageVideo) el.stageVideo.classList.add('hidden');
     if (el.stageStreamWrap) el.stageStreamWrap.classList.add('hidden');
 
-    if (!url && mode !== 'stream') {
-        if (el.stageEmptyView) el.stageEmptyView.classList.remove('hidden');
-        return;
-    }
+    const isStreaming = (mode === 'stream' && (url === 'CANLI_YAYIN' || !!state.sharedBrowser.screenStream || (el.stageStreamVideo && el.stageStreamVideo.srcObject)));
 
-    if (mode === 'stream') {
+    if (isStreaming) {
         if (el.stageStreamWrap) el.stageStreamWrap.classList.remove('hidden');
-    } else if (mode === 'video' || isDirectVideoUrl(url)) {
-        if (el.stageVideo) {
-            el.stageVideo.classList.remove('hidden');
-            if (el.stageVideo.src !== url) {
-                el.stageVideo.src = url;
-                el.stageVideo.load();
-            }
-        }
     } else {
-        // YouTube, Proxy veya Web Iframe
-        if (el.stageIframe) {
-            el.stageIframe.classList.remove('hidden');
-            const resolved = resolveMediaUrl(url);
-            const targetUrl = resolved.url || url;
-            if (el.stageIframe.src !== targetUrl) {
-                el.stageIframe.src = targetUrl;
-            }
-        }
-    }
-}
-
-function submitStageUrl(url) {
-    if (!url) return;
-    if (state.sharedBrowser.controllerId !== state.myId) {
-        alert("Yalnızca yönetici URL değiştirebilir. 'Kontrol İste' butonuna basarak yetki alabilirsiniz.");
-        return;
-    }
-
-    const resolved = resolveMediaUrl(url);
-
-    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-        state.ws.send(JSON.stringify({
-            type: 'browser-change-url',
-            url: resolved.url,
-            mode: resolved.mode
-        }));
+        if (el.stageEmptyView) el.stageEmptyView.classList.remove('hidden');
     }
 }
 
@@ -2266,9 +2257,14 @@ async function startScreenShare() {
     try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
             video: {
-                cursor: "always"
+                cursor: "always",
+                displaySurface: "browser"
             },
-            audio: true
+            audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
         });
 
         state.sharedBrowser.screenStream = stream;
@@ -2279,13 +2275,17 @@ async function startScreenShare() {
             el.stageStreamVideo.play().catch(e => console.warn(e));
         }
 
-        // WebRTC üzerinden diğer kullanıcılara video track'i gönder
+        // WebRTC üzerinden diğer kullanıcılara video ve sekme sesi track'lerini ekle
         const videoTrack = stream.getVideoTracks()[0];
         const audioTrack = stream.getAudioTracks()[0];
 
         Object.values(state.peers).forEach(peer => {
-            if (videoTrack) peer.pc.addTrack(videoTrack, stream);
-            if (audioTrack) peer.pc.addTrack(audioTrack, stream);
+            try {
+                if (videoTrack) peer.pc.addTrack(videoTrack, stream);
+                if (audioTrack) peer.pc.addTrack(audioTrack, stream);
+            } catch (e) {
+                console.warn("Peer addTrack error:", e);
+            }
         });
 
         // Sunucuya stream moduna geçtiğimizi bildir
@@ -2297,13 +2297,22 @@ async function startScreenShare() {
             }));
         }
 
+        if (el.btnStageShareScreen) {
+            el.btnStageShareScreen.textContent = '⏹️ Yayını Durdur';
+            el.btnStageShareScreen.classList.add('active-danger');
+        }
+
+        updateStageMediaView('CANLI_YAYIN', 'stream');
+
         // Kullanıcı tarayıcı üzerinden yayını durdurursa
-        videoTrack.onended = () => {
-            stopScreenShare();
-        };
+        if (videoTrack) {
+            videoTrack.onended = () => {
+                stopScreenShare();
+            };
+        }
 
     } catch (err) {
-        console.warn("Sekme paylaşımı iptal edildi veya hata:", err);
+        console.warn("Sekme/ekran paylaşımı iptal edildi veya hata:", err);
     }
 }
 
@@ -2315,13 +2324,31 @@ function stopScreenShare() {
     if (el.stageStreamVideo) {
         el.stageStreamVideo.srcObject = null;
     }
+    // WebRTC peer bağlantılarından video sender'ları temizle
+    Object.values(state.peers).forEach(peer => {
+        try {
+            const senders = peer.pc.getSenders();
+            senders.forEach(sender => {
+                if (sender.track && sender.track.kind === 'video') {
+                    peer.pc.removeTrack(sender);
+                }
+            });
+        } catch (e) {
+            console.warn("Sender remove error:", e);
+        }
+    });
+    if (el.btnStageShareScreen) {
+        el.btnStageShareScreen.textContent = '🖥️ Yayını Başlat';
+        el.btnStageShareScreen.classList.remove('active-danger');
+    }
     if (state.sharedBrowser.controllerId === state.myId && state.ws && state.ws.readyState === WebSocket.OPEN) {
         state.ws.send(JSON.stringify({
             type: 'browser-change-url',
             url: '',
-            mode: 'embed'
+            mode: 'stream'
         }));
     }
+    updateStageMediaView('', 'stream');
 }
 
 function requestBrowserControl() {
@@ -2418,6 +2445,9 @@ function renderStageSpeakers() {
 // 10. OLAY DİNLEYİCİLERİ (EVENT LISTENERS)
 // ============================================================================
 function initEventListeners() {
+    // Emoji Seçici Başlat
+    initEmojiPicker();
+
     // Form Katılma
     el.joinForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -2451,27 +2481,7 @@ function initEventListeners() {
         });
     }
 
-    // URL Formu Gönderimi
-    if (el.stageUrlForm) {
-        el.stageUrlForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const url = el.stageUrlInput.value.trim();
-            if (url) {
-                submitStageUrl(url);
-            }
-        });
-    }
 
-    // Örnek Chip Kısayolları (Boş Ekrandaki Tıklanabilir Linkler)
-    document.querySelectorAll('.empty-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            const sampleUrl = chip.getAttribute('data-url');
-            if (sampleUrl) {
-                if (el.stageUrlInput) el.stageUrlInput.value = sampleUrl;
-                submitStageUrl(sampleUrl);
-            }
-        });
-    });
 
     // Sekme / Dizi Yayını Paylaşma Butonu (WebRTC Screen Share with Audio)
     if (el.btnStageShareScreen) {
@@ -2538,36 +2548,7 @@ function initEventListeners() {
         });
     }
 
-    // Video Player Senkronizasyon Olayları
-    if (el.stageVideo) {
-        el.stageVideo.addEventListener('play', () => {
-            if (state.sharedBrowser.controllerId === state.myId && state.ws && state.ws.readyState === WebSocket.OPEN) {
-                state.ws.send(JSON.stringify({
-                    type: 'browser-sync-player',
-                    is_playing: true,
-                    current_time: el.stageVideo.currentTime
-                }));
-            }
-        });
-        el.stageVideo.addEventListener('pause', () => {
-            if (state.sharedBrowser.controllerId === state.myId && state.ws && state.ws.readyState === WebSocket.OPEN) {
-                state.ws.send(JSON.stringify({
-                    type: 'browser-sync-player',
-                    is_playing: false,
-                    current_time: el.stageVideo.currentTime
-                }));
-            }
-        });
-        el.stageVideo.addEventListener('seeked', () => {
-            if (state.sharedBrowser.controllerId === state.myId && state.ws && state.ws.readyState === WebSocket.OPEN) {
-                state.ws.send(JSON.stringify({
-                    type: 'browser-sync-player',
-                    is_playing: !el.stageVideo.paused,
-                    current_time: el.stageVideo.currentTime
-                }));
-            }
-        });
-    }
+
 
     // Kayıtlı Oturumu Sıfırlama
     if (el.btnClearSession) {
