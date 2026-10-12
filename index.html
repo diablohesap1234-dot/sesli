@@ -312,7 +312,7 @@
                 </aside>
 
                 <!-- 2. ORTA: AKTİF KANALIN SESLİ KULLANICI KARTLARI -->
-                <section class="voice-section">
+                <section class="voice-section" id="voice-section">
                     <!-- MOBİL VE HIZLI KANAL SEÇİM STRIP'İ -->
                     <div class="mobile-channel-strip" id="mobile-channel-strip">
                         <span class="strip-label">Oda Seç:</span>
@@ -322,6 +322,93 @@
                             <button type="button" class="strip-btn" data-channel-id="channel-3">Oda 3</button>
                             <button type="button" class="strip-btn" data-channel-id="channel-4">Oda 4</button>
                             <button type="button" class="strip-btn" data-channel-id="channel-5">Oda 5</button>
+                        </div>
+                    </div>
+
+                    <!-- BİRLİKTE DİZİ / VİDEO İZLEME VE ORTAK TARAYICI SİNEMA SAHNESİ (CENTER STAGE) -->
+                    <div id="shared-browser-stage" class="shared-browser-stage hidden">
+                        <!-- ÜST KONTROL ÇUBUĞU -->
+                        <div class="stage-topbar">
+                            <div class="stage-topbar-left">
+                                <span class="stage-brand-icon">🎬</span>
+                                <div class="stage-brand-meta">
+                                    <span class="stage-brand-title">BİRLİKTE İZLE</span>
+                                    <span id="stage-controller-badge" class="stage-ctrl-badge">👑 Yönetici: Sen</span>
+                                </div>
+                            </div>
+
+                            <form id="stage-url-form" class="stage-url-form">
+                                <div class="stage-url-input-wrap">
+                                    <span class="stage-url-icon">🔗</span>
+                                    <input type="text" id="stage-url-input" placeholder="YouTube, Dizi/Film (MP4) veya Site Linki Yapıştır..." autocomplete="off">
+                                    <button type="submit" id="btn-stage-load-url" class="btn-stage-go">Aç</button>
+                                </div>
+                            </form>
+
+                            <div class="stage-topbar-right">
+                                <button type="button" id="btn-stage-share-screen" class="btn-stage-pill" title="Dizi Sekmesini Sesli Paylaş (WebRTC Canlı Yayın)">
+                                    🖥️ Sekme Yayını
+                                </button>
+                                <button type="button" id="btn-stage-request-ctrl" class="btn-stage-pill btn-req-ctrl hidden" title="Tarayıcı kontrolünü devralmak için izin iste">
+                                    ✋ Kontrol İste
+                                </button>
+                                <button type="button" id="btn-stage-fullscreen" class="btn-stage-icon" title="Tam Ekran Modu">
+                                    ⛶
+                                </button>
+                                <button type="button" id="btn-stage-close" class="btn-stage-icon btn-stage-close" title="Sinema Sahnesini Kapat">
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- SAHNE İÇERİK VIEWPORT -->
+                        <div class="stage-viewport" id="stage-viewport">
+                            <!-- Başlangıç / Boş Ekran -->
+                            <div id="stage-empty-view" class="stage-empty-view">
+                                <div class="empty-view-card">
+                                    <div class="empty-view-icon">🍿</div>
+                                    <h3>Birlikte Dizi, Film & Video İzleme</h3>
+                                    
+                                    <div class="empty-stream-cta">
+                                        <button type="button" id="btn-empty-start-stream" class="btn-primary btn-stream-main">
+                                            <span>🖥️ Dizi / Sekme Yayını Başlat</span>
+                                            <span class="btn-subtext">(Dizipal, Google, Netflix vs. için %100 Çalışan Çözüm)</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="empty-info-box">
+                                        <p><strong>ℹ️ "Bağlanmayı Reddetti" Uyarısı Neden Olur?</strong><br>
+                                        Google, YouTube ana sayfası ve dizi siteleri güvenlik kuralı nedeniyle başka sitelerin içine doğrudan gömülmeyi engeller. Dizi sitelerini veya Google'ı izlemek için yukarıdaki <strong>"Sekme Yayını Başlat"</strong> butonuna basarak açtığınız sekmesini sesli olarak odaya aktarabilirsiniz!</p>
+                                    </div>
+
+                                    <div class="empty-view-shortcuts">
+                                        <span class="shortcuts-label">Hızlı Başlat:</span>
+                                        <button type="button" class="empty-chip" data-url="https://www.youtube.com/watch?v=jfKfPfyJRdk">▶ Lofi Canlı Müzik</button>
+                                        <button type="button" class="empty-chip" data-url="https://duckduckgo.com">🔍 Gömülü Web Arama</button>
+                                        <button type="button" class="empty-chip" data-url="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4">🎬 Örnek Film (MP4 Test)</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- YouTube / Web İframe Görüntüleyici -->
+                            <iframe id="stage-iframe" class="stage-media-item hidden" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-downloads allow-modals" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+
+                            <!-- Doğrudan Video Oynatıcı (.mp4, .webm vs.) -->
+                            <video id="stage-video" class="stage-media-item hidden" playsinline controls></video>
+
+                            <!-- WebRTC Sekme / Dizi Canlı Yayını -->
+                            <div id="stage-stream-wrap" class="stage-media-item hidden">
+                                <video id="stage-stream-video" autoplay playsinline></video>
+                                <div class="live-stream-badge">🔴 CANLI DİZİ/SEKME YAYINI</div>
+                            </div>
+                        </div>
+
+                        <!-- SAHNE ALTI KATILIMCILAR ŞERİDİ (Konuşanlar izlerken görünür) -->
+                        <div class="stage-dock-strip" id="stage-dock-strip">
+                            <span class="stage-dock-title">🎙️ Sesli Sohbet:</span>
+                            <div class="stage-dock-speakers" id="stage-dock-speakers">
+                                <!-- Dinamik konuşmacı minyatür kartları buraya gelecek -->
+                            </div>
                         </div>
                     </div>
 
@@ -339,6 +426,10 @@
                             <span class="tab-title">genel-sohbet</span>
                         </button>
                         <!-- Dinamik DM Sekmeleri buraya eklenecek -->
+                        <button type="button" id="btn-shared-browser-toggle" class="btn-shared-browser-toggle" title="Ortak Tarayıcı / Birlikte Dizi & Video İzle">
+                            <span class="browser-btn-icon">🎬</span>
+                            <span>Birlikte İzle</span>
+                        </button>
                     </div>
 
                     <div class="chat-messages" id="chat-messages">
@@ -544,6 +635,26 @@
                         <span>⬇️ Yeni Sekmede Aç / İndir</span>
                     </a>
                 </div>
+            </div>
+        </div>
+
+        <!-- KONTROL DEVİR TALEBİ MODALI (YÖNETİCİ İÇİN) -->
+        <div id="control-request-modal" class="modal-backdrop hidden">
+            <div class="modal-card modal-ctrl-card">
+                <div class="modal-header">
+                    <h2>👑 Kontrol Yetkisi Talebi</h2>
+                </div>
+                <div class="modal-body">
+                    <p id="ctrl-req-text" style="font-size: 14px; margin-bottom: 8px;"><strong>Ali</strong> ortak tarayıcının yönetim yetkisini istiyor.</p>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px;">Onaylarsanız video linkini değiştirme ve kontrol etme yetkisi ona devredilecek.</p>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button type="button" id="btn-deny-ctrl-request" class="btn-secondary">Reddet</button>
+                        <button type="button" id="btn-grant-ctrl-request" class="btn-primary">✔ Yetkiyi Devret</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- MASAÜSTÜ UYGULAMASI VE DÜŞÜK RAM BİLGİ MODALI -->
         <div id="desktop-info-modal" class="modal-backdrop hidden">
             <div class="modal-card">

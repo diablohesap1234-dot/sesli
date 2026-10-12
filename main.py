@@ -13,6 +13,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPExceptio
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
+import httpx
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -151,7 +152,28 @@ class ConnectionManager:
         if room_id not in rooms:
             rooms[room_id] = {
                 "password": None,
-                "participants": {}
+                "participants": {},
+                "shared_browser": {
+                    "active": False,
+                    "controller_id": None,
+                    "controller_name": None,
+                    "mode": "embed",
+                    "url": "",
+                    "is_playing": False,
+                    "current_time": 0.0,
+                    "title": ""
+                }
+            }
+        elif "shared_browser" not in rooms[room_id]:
+            rooms[room_id]["shared_browser"] = {
+                "active": False,
+                "controller_id": None,
+                "controller_name": None,
+                "mode": "embed",
+                "url": "",
+                "is_playing": False,
+                "current_time": 0.0,
+                "title": ""
             }
         return rooms[room_id]
 
@@ -318,6 +340,64 @@ async def upload_image(file: UploadFile = File(...)):
         await f.write(content)
 
     return {"url": f"/static/uploads/{filename}"}
+
+
+@app.get("/api/proxy")
+async def web_proxy(url: str = Query(...)):
+    """Web Proxy: X-Frame-Options ve CSP başlıklarını temizleyerek web sitelerinin iframe içinde açılabilmesini sağlar"""
+    target = url.strip()
+    if not target.startswith("http://") and not target.startswith("https://"):
+        target = "https://" + target
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=12.0, verify=False) as client:
+            resp = await client.get(
+                target,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+                }
+            )
+            content_type = resp.headers.get("content-type", "text/html")
+            headers = {
+                "X-Frame-Options": "ALLOWALL",
+                "Content-Security-Policy": "frame-ancestors *",
+                "Access-Control-Allow-Origin": "*"
+            }
+            if "text/html" in content_type:
+                html = resp.text
+                base_tag = f'<base href="{target}">'
+                if "<head>" in html:
+                    html = html.replace("<head>", f"<head>{base_tag}", 1)
+                elif "<HEAD>" in html:
+                    html = html.replace("<HEAD>", f"<HEAD>{base_tag}", 1)
+                elif "<html>" in html:
+                    html = html.replace("<html>", f"<html><head>{base_tag}</head>", 1)
+                return Response(content=html, media_type="text/html", headers=headers)
+
+            return Response(content=resp.content, media_type=content_type, headers=headers)
+    except Exception as e:
+        err_html = f"""
+        <!DOCTYPE html>
+        <html><head><meta charset="utf-8"><style>
+            body {{ background: #111214; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }}
+            .box {{ max-width: 520px; padding: 32px 24px; background: #1e1f24; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }}
+            h3 {{ color: #F23F43; margin-top: 0; font-size: 18px; }}
+            p {{ color: #bbb; font-size: 13px; line-height: 1.6; }}
+            .tip {{ background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: 8px; padding: 12px; margin-top: 16px; color: #fff; font-size: 13px; }}
+        </style></head>
+        <body>
+            <div class="box">
+                <h3>⚠️ Web Sayfası Doğrudan Açılamadı</h3>
+                <p>Bu web sitesi ({target}) iframe veya proxy erişimini kısıtlamış olabilir: <em>{str(e)}</em></p>
+                <div class="tip">
+                    💡 <strong>En İyi Çözüm:</strong> Üstteki <strong>"🖥️ Sekme Yayını"</strong> butonuna basarak bu siteyi kendi tarayıcınızdan sesli olarak tüm odaya canlı yayınlayabilirsiniz!
+                </div>
+            </div>
+        </body></html>
+        """
+        return Response(content=err_html, media_type="text/html")
 
 
 @app.get("/")
@@ -509,7 +589,8 @@ async def websocket_endpoint(
         "your_id": client_id,
         "your_voice_channel": voice_channel,
         "users": existing_users,
-        "history": history
+        "history": history,
+        "shared_browser": room.get("shared_browser", {})
     }))
 
     # 2. Notify existing users that new user joined
@@ -647,6 +728,149 @@ async def websocket_endpoint(
                         exclude_client_id=client_id
                     )
 
+            elif msg_type == "browser-open":
+                # Ortak tarayıcı / sinema modunu başlatma
+                browser_state = room.setdefault("shared_browser", {})
+                if not browser_state.get("active"):
+                    browser_state["active"] = True
+                    browser_state["controller_id"] = client_id
+                    browser_state["controller_name"] = nickname
+                    browser_state["mode"] = message.get("mode", "embed")
+                    browser_state["url"] = message.get("url", "")
+                    browser_state["is_playing"] = False
+                    browser_state["current_time"] = 0.0
+                    browser_state["title"] = message.get("title", "")
+
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "browser-state-update",
+                            "state": browser_state
+                        }
+                    )
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "chat-system",
+                            "text": f"🎬 {nickname} ortak tarayıcı / birlikte izleme oturumunu başlattı.",
+                            "timestamp": time.strftime("%H:%M")
+                        }
+                    )
+
+            elif msg_type == "browser-close":
+                # Oturumu sonlandırma
+                browser_state = room.get("shared_browser")
+                if browser_state and browser_state.get("active"):
+                    if browser_state.get("controller_id") == client_id or len(room["participants"]) <= 1:
+                        browser_state["active"] = False
+                        browser_state["controller_id"] = None
+                        browser_state["controller_name"] = None
+                        browser_state["url"] = ""
+                        browser_state["mode"] = "embed"
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "browser-state-update",
+                                "state": browser_state
+                            }
+                        )
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "chat-system",
+                                "text": f"🎬 {nickname} ortak tarayıcı oturumunu kapattı.",
+                                "timestamp": time.strftime("%H:%M")
+                            }
+                        )
+
+            elif msg_type == "browser-change-url":
+                # URL veya oynatma modu değiştirme (Yalnızca aktif yönetici)
+                browser_state = room.get("shared_browser")
+                if browser_state and browser_state.get("controller_id") == client_id:
+                    browser_state["url"] = message.get("url", "")
+                    browser_state["mode"] = message.get("mode", "embed")
+                    browser_state["title"] = message.get("title", "")
+                    browser_state["is_playing"] = False
+                    browser_state["current_time"] = 0.0
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "browser-state-update",
+                            "state": browser_state
+                        }
+                    )
+
+            elif msg_type == "browser-sync-player":
+                # Oynat/Durdur/Süre senkronizasyonu
+                browser_state = room.get("shared_browser")
+                if browser_state and browser_state.get("controller_id") == client_id:
+                    browser_state["is_playing"] = bool(message.get("is_playing", False))
+                    browser_state["current_time"] = float(message.get("current_time", 0.0))
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "browser-sync-player",
+                            "is_playing": browser_state["is_playing"],
+                            "current_time": browser_state["current_time"],
+                            "controller_id": client_id
+                        },
+                        exclude_client_id=client_id
+                    )
+
+            elif msg_type == "browser-request-control":
+                # İzleyicinin yöneticiden kontrol yetkisi istemesi
+                browser_state = room.get("shared_browser")
+                if browser_state and browser_state.get("active"):
+                    ctrl_id = browser_state.get("controller_id")
+                    if ctrl_id and ctrl_id in room["participants"] and ctrl_id != client_id:
+                        await manager.send_to_peer(
+                            room_id,
+                            ctrl_id,
+                            {
+                                "type": "browser-control-requested",
+                                "from_id": client_id,
+                                "from_name": nickname
+                            }
+                        )
+
+            elif msg_type == "browser-grant-control":
+                # Yöneticinin yetkiyi başka birine devretmesi
+                target_id = message.get("target_id")
+                browser_state = room.get("shared_browser")
+                if browser_state and browser_state.get("controller_id") == client_id:
+                    if target_id and target_id in room["participants"]:
+                        target_name = room["participants"][target_id]["nickname"]
+                        browser_state["controller_id"] = target_id
+                        browser_state["controller_name"] = target_name
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "browser-state-update",
+                                "state": browser_state
+                            }
+                        )
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "chat-system",
+                                "text": f"👑 Ortak tarayıcı kontrolü {target_name} kullanıcısına devredildi.",
+                                "timestamp": time.strftime("%H:%M")
+                            }
+                        )
+
+            elif msg_type == "browser-deny-control":
+                # Yetki talebinin reddedilmesi
+                target_id = message.get("target_id")
+                if target_id and room_id in rooms and target_id in room["participants"]:
+                    await manager.send_to_peer(
+                        room_id,
+                        target_id,
+                        {
+                            "type": "browser-control-denied",
+                            "from_name": nickname
+                        }
+                    )
+
             elif msg_type == "ping":
                 # Heartbeat to measure latency
                 await websocket.send_text(json.dumps({
@@ -663,6 +887,35 @@ async def websocket_endpoint(
         if room_id in rooms and client_id in rooms[room_id]["participants"]:
             del rooms[room_id]["participants"][client_id]
             logger.info(f"User left: {nickname}. Remaining in {room_id}: {len(rooms[room_id]['participants'])}")
+
+            # Eğer ayrılan kişi tarayıcı yöneticisi ise yetkiyi kalan birine devret
+            browser_state = room.get("shared_browser")
+            if browser_state and browser_state.get("active") and browser_state.get("controller_id") == client_id:
+                remaining_cids = list(room["participants"].keys())
+                if remaining_cids:
+                    new_ctrl_id = remaining_cids[0]
+                    new_ctrl_name = room["participants"][new_ctrl_id]["nickname"]
+                    browser_state["controller_id"] = new_ctrl_id
+                    browser_state["controller_name"] = new_ctrl_name
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "browser-state-update",
+                            "state": browser_state
+                        }
+                    )
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "chat-system",
+                            "text": f"👑 Önceki yönetici ayrıldığı için ortak tarayıcı kontrolü {new_ctrl_name} kullanıcısına devredildi.",
+                            "timestamp": time.strftime("%H:%M")
+                        }
+                    )
+                else:
+                    browser_state["active"] = False
+                    browser_state["controller_id"] = None
+                    browser_state["controller_name"] = None
 
             # Notify others
             await manager.broadcast_to_room(
