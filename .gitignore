@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+cloudflared.exe
+chat.db
+static/uploads/*
+!static/uploads/.gitkeep
+.DS_Store
+*.log
