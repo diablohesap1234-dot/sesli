@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Özel Sesli & Yazılı Sohbet</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎙️</text></svg>">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 1. GİRİŞ EKRANI (LOBBY) -->
+        <div id="lobby-screen" class="screen-view">
+            <div class="lobby-card">
+                <div class="lobby-header">
+                    <div class="app-logo">
+                        <span class="logo-icon">🎙️</span>
+                    </div>
+                    <h1>Arkadaş Grubu Sesli Sohbet</h1>
+                    <p class="subtitle">Düşük gecikmeli, güvenli ve p2p grup iletişimi</p>
+                </div>
+
+                <form id="join-form" class="lobby-form">
+                    <div class="form-group">
+                        <label for="nickname-input">Takma Adın</label>
+                        <input type="text" id="nickname-input" value="Misafir" placeholder="Örn: Misafir" maxlength="20" required autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Avatar Rengi</label>
+                        <div class="color-picker" id="color-picker">
+                            <button type="button" class="color-swatch active" style="--c: #5865F2;" data-color="#5865F2"></button>
+                            <button type="button" class="color-swatch" style="--c: #23A55A;" data-color="#23A55A"></button>
+                            <button type="button" class="color-swatch" style="--c: #F23F43;" data-color="#F23F43"></button>
+                            <button type="button" class="color-swatch" style="--c: #FEE75C;" data-color="#FEE75C"></button>
+                            <button type="button" class="color-swatch" style="--c: #EB459E;" data-color="#EB459E"></button>
+                            <button type="button" class="color-swatch" style="--c: #57F287;" data-color="#57F287"></button>
+                            <button type="button" class="color-swatch" style="--c: #00B0F4;" data-color="#00B0F4"></button>
+                            <button type="button" class="color-swatch" style="--c: #E67E22;" data-color="#E67E22"></button>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="room-input">Sunucu / Grup Adı</label>
+                            <input type="text" id="room-input" value="gaming" placeholder="Oda adı" maxlength="30" required autocomplete="off">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="select-initial-channel">Başlangıç Ses Odası</label>
+                            <select id="select-initial-channel" class="lobby-channel-select">
+                                <option value="channel-1" selected>🔊 Ses Odası 1</option>
+                                <option value="channel-2">🔊 Ses Odası 2</option>
+                                <option value="channel-3">🔊 Ses Odası 3</option>
+                                <option value="channel-4">🔊 Ses Odası 4</option>
+                                <option value="channel-5">🔊 Ses Odası 5</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password-input">Oda Şifresi (Opsiyonel)</label>
+                        <input type="password" id="password-input" placeholder="Gizli oda için şifre (opsiyonel)" maxlength="20" autocomplete="new-password">
+                    </div>
+
+                    <!-- Mikrofon Test ve İzin Alanı -->
+                    <div class="mic-test-box">
+                        <div class="mic-test-header">
+                            <span>🎤 Mikrofon Önizleme:</span>
+                            <span id="mic-status-badge" class="badge">Bekleniyor</span>
+                        </div>
+                        <div class="mic-meter-bar">
+                            <div id="mic-meter-fill" class="mic-meter-fill"></div>
+                        </div>
+                        <p class="mic-tip">Odaya girmeden önce mikrofonuna konuşarak çubuğun hareket ettiğini kontrol edebilirsin.</p>
+                    </div>
+
+                    <!-- Dış İnternet Tünel Paylaşımı (Bat gerektirmez) -->
+                    <div class="tunnel-box">
+                        <div class="tunnel-box-header">
+                            <span>🌐 Uzaktaki Arkadaşlarla Paylaş</span>
+                            <span id="tunnel-badge-lobby" class="badge">Kapalı</span>
+                        </div>
+                        <p class="tunnel-tip">Farklı evlerdeki arkadaşların için tek tıkla güvenli HTTPS tüneli açabilirsin.</p>
+                        
+                        <div id="tunnel-inactive-view" class="tunnel-controls">
+                            <button type="button" id="btn-start-tunnel" class="btn-tunnel">
+                                <span class="spinner hidden" id="tunnel-spinner"></span>
+                                <span id="tunnel-btn-text">🌐 Tüneli Başlat (Link Al)</span>
+                            </button>
+                        </div>
+
+                        <div id="tunnel-active-view" class="tunnel-active-row hidden">
+                            <input type="text" id="tunnel-url-display" readonly class="tunnel-input" value="">
+                            <button type="button" id="btn-copy-tunnel-url" class="btn-secondary">Kopyala</button>
+                            <button type="button" id="btn-stop-tunnel" class="btn-danger-sm" title="Tüneli Kapat">✕</button>
+                        </div>
+                    </div>
+
+                    <div id="error-message" class="error-box hidden"></div>
+
+                    <button type="submit" id="btn-join" class="btn-primary">
+                        <span>Odaya Katıl</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 2. ODA EKRANI (ROOM INTERFACE) -->
+        <div id="room-screen" class="screen-view hidden">
+            <!-- ÜST BİLGİ ÇUBUĞU -->
+            <header class="room-navbar">
+                <div class="room-nav-left">
+                    <div class="channel-tag">
+                        <span class="icon">🔊</span>
+                        <span id="current-room-name" class="room-title">gaming</span>
+                    </div>
+                    <div class="user-count-badge">
+                        <span class="online-dot"></span>
+                        <span id="online-count">1 Kişi</span>
+                    </div>
+                </div>
+
+                <div class="room-nav-center">
+                    <div class="latency-indicator" id="latency-indicator" title="Sunucu Gecikmesi">
+                        <span class="ping-dot"></span>
+                        <span id="ping-text">-- ms</span>
+                    </div>
+                </div>
+
+                <div class="room-nav-right">
+                    <button id="btn-copy-link" class="btn-secondary" title="Arkadaşlarına göndermek için davet linkini kopyala">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                        <span id="copy-btn-text">Davet Linki</span>
+                    </button>
+
+                    <button id="btn-settings-toggle" class="btn-icon" title="Ses Ayarları">
+                        ⚙️
+                    </button>
+
+                    <button id="btn-leave-room" class="btn-danger" title="Odadan Ayrıl">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16 17 21 12 16 7"/>
+                            <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                        <span>Ayrıl</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- ANA İÇERİK ALANI (SES ODALARI KANALLARI + SESLİ GRID + YAZILI SOHBET) -->
+            <main class="room-main">
+                <!-- 1. SOL: DİSCORD TARZI SES ODALARI KANAL LİSTESİ -->
+                <aside class="channels-sidebar" id="channels-sidebar">
+                    <div class="channels-sidebar-header">
+                        <span class="channels-cat-title">🔊 SES ODALARI</span>
+                    </div>
+                    <div class="voice-channels-list" id="voice-channels-list">
+                        <!-- 5 Ses Kanalı -->
+                        <div class="channel-wrapper" data-channel-wrapper="channel-1">
+                            <button type="button" class="channel-btn active" data-channel-id="channel-1">
+                                <span class="ch-icon">🔊</span>
+                                <span class="ch-name">Ses Odası 1</span>
+                                <span class="ch-count-badge" id="ch-count-channel-1">0</span>
+                            </button>
+                            <div class="channel-users-list" id="ch-users-channel-1"></div>
+                        </div>
+
+                        <div class="channel-wrapper" data-channel-wrapper="channel-2">
+                            <button type="button" class="channel-btn" data-channel-id="channel-2">
+                                <span class="ch-icon">🔊</span>
+                                <span class="ch-name">Ses Odası 2</span>
+                                <span class="ch-count-badge" id="ch-count-channel-2">0</span>
+                            </button>
+                            <div class="channel-users-list" id="ch-users-channel-2"></div>
+                        </div>
+
+                        <div class="channel-wrapper" data-channel-wrapper="channel-3">
+                            <button type="button" class="channel-btn" data-channel-id="channel-3">
+                                <span class="ch-icon">🔊</span>
+                                <span class="ch-name">Ses Odası 3</span>
+                                <span class="ch-count-badge" id="ch-count-channel-3">0</span>
+                            </button>
+                            <div class="channel-users-list" id="ch-users-channel-3"></div>
+                        </div>
+
+                        <div class="channel-wrapper" data-channel-wrapper="channel-4">
+                            <button type="button" class="channel-btn" data-channel-id="channel-4">
+                                <span class="ch-icon">🔊</span>
+                                <span class="ch-name">Ses Odası 4</span>
+                                <span class="ch-count-badge" id="ch-count-channel-4">0</span>
+                            </button>
+                            <div class="channel-users-list" id="ch-users-channel-4"></div>
+                        </div>
+
+                        <div class="channel-wrapper" data-channel-wrapper="channel-5">
+                            <button type="button" class="channel-btn" data-channel-id="channel-5">
+                                <span class="ch-icon">🔊</span>
+                                <span class="ch-name">Ses Odası 5</span>
+                                <span class="ch-count-badge" id="ch-count-channel-5">0</span>
+                            </button>
+                            <div class="channel-users-list" id="ch-users-channel-5"></div>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- 2. ORTA: AKTİF KANALIN SESLİ KULLANICI KARTLARI -->
+                <section class="voice-section">
+                    <!-- MOBİL VE HIZLI KANAL SEÇİM STRIP'İ -->
+                    <div class="mobile-channel-strip" id="mobile-channel-strip">
+                        <span class="strip-label">Oda Seç:</span>
+                        <div class="strip-buttons" id="strip-buttons">
+                            <button type="button" class="strip-btn active" data-channel-id="channel-1">Oda 1</button>
+                            <button type="button" class="strip-btn" data-channel-id="channel-2">Oda 2</button>
+                            <button type="button" class="strip-btn" data-channel-id="channel-3">Oda 3</button>
+                            <button type="button" class="strip-btn" data-channel-id="channel-4">Oda 4</button>
+                            <button type="button" class="strip-btn" data-channel-id="channel-5">Oda 5</button>
+                        </div>
+                    </div>
+
+                    <div class="voice-grid" id="voice-grid">
+                        <!-- Kullanıcı kartları buraya JavaScript tarafından dinamik eklenecek -->
+                    </div>
+                </section>
+
+                <!-- SAĞ ALAN: YAZILI SOHBET (GENEL & DM KANALLARI) -->
+                <aside class="chat-section" id="chat-section">
+                    <!-- SOHBET SEKMELERİ (CHANNELS & DMS) -->
+                    <div class="chat-tabs-bar" id="chat-tabs-bar">
+                        <button type="button" class="chat-tab active" data-tab="general" id="tab-general">
+                            <span class="tab-icon">#</span>
+                            <span class="tab-title">genel-sohbet</span>
+                        </button>
+                        <!-- Dinamik DM Sekmeleri buraya eklenecek -->
+                    </div>
+
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="chat-empty-state">
+                            <p>Sohbete hoş geldiniz! Arkadaşlarınıza selam verin veya resim yapıştırın 👋</p>
+                        </div>
+                    </div>
+
+                    <!-- GÖRSEL YÜKLEME ÖNİZLEME STRIP'İ -->
+                    <div id="image-staging-box" class="image-staging-box hidden">
+                        <div class="staging-preview">
+                            <img id="staged-image-preview" src="" alt="Yüklenecek görsel">
+                            <button type="button" id="btn-cancel-staged-img" class="btn-cancel-img" title="Görseli kaldır">✕</button>
+                        </div>
+                        <span class="staging-hint">Görsel hazır • Göndermek için Enter'a basın</span>
+                    </div>
+
+                    <form id="chat-form" class="chat-input-bar">
+                        <!-- GÖRSEL YÜKLEME BUTONU VE GİZLİ FILE INPUT -->
+                        <input type="file" id="chat-file-input" accept="image/*" class="hidden">
+                        <button type="button" id="btn-attach-image" class="btn-attach" title="Görsel Ekle (veya direkt Ctrl+V ile yapıştır)">
+                            📷
+                        </button>
+
+                        <input type="text" id="chat-input" placeholder="Mesaj yaz veya resim yapıştır (Ctrl+V)..." maxlength="2000" autocomplete="off">
+                        
+                        <button type="submit" id="chat-send-btn" class="btn-send" title="Gönder">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <line x1="22" y1="2" x2="11" y2="13"/>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                            </svg>
+                        </button>
+                    </form>
+                </aside>
+            </main>
+
+            <!-- ALT KONTROL PANELİ (DOCK) -->
+            <footer class="room-control-dock">
+                <div class="dock-user-info">
+                    <div class="dock-avatar" id="dock-avatar">T</div>
+                    <div class="dock-meta">
+                        <span class="dock-username" id="dock-username">Sen</span>
+                        <span class="dock-status" id="dock-connection-status">Bağlandı</span>
+                    </div>
+                </div>
+
+                <div class="dock-center-controls">
+                    <!-- MİKROFON AÇ / KAPAT -->
+                    <button id="btn-toggle-mic" class="dock-btn" title="Mikrofonu Kapat / Aç (Kısayol: M)">
+                        <div class="dock-btn-icon" id="mic-icon">🎙️</div>
+                        <span id="mic-label">Mikrofon</span>
+                        <span class="kbd-hint">M</span>
+                    </button>
+
+                    <!-- KULAKLIK / SAĞIRLAŞTIR -->
+                    <button id="btn-toggle-deafen" class="dock-btn" title="Kulaklığı Kapat / Aç (Kısayol: D)">
+                        <div class="dock-btn-icon" id="deafen-icon">🎧</div>
+                        <span id="deafen-label">Kulaklık</span>
+                        <span class="kbd-hint">D</span>
+                    </button>
+
+                    <!-- BAS-KONUŞ VEYA AÇIK MİKROFON MODU -->
+                    <div class="dock-toggle-group">
+                        <button id="btn-ptt-mode" class="dock-btn-small" title="Konuşma Modu">
+                            <span class="mode-icon" id="mode-icon">⚡</span>
+                            <span id="mode-text">Açık Mikrofon</span>
+                        </button>
+                        <div id="ptt-key-badge" class="ptt-badge hidden">
+                            Space Bas-Konuş
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dock-right-actions">
+                    <button id="btn-chat-toggle" class="dock-btn-icon-only active" title="Sohbet Panelini Gizle/Göster">
+                        💬
+                    </button>
+                </div>
+            </footer>
+        </div>
+
+        <!-- AYARLAR MODALI -->
+        <div id="settings-modal" class="modal-backdrop hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>⚙️ Ses ve İletişim Ayarları</h2>
+                    <button id="btn-close-settings" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="setting-item">
+                        <label for="select-mic-device">Mikrofon Giriş Aygıtı</label>
+                        <select id="select-mic-device" class="form-select">
+                            <option value="">Varsayılan Mikrofon</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="select-input-mode">Konuşma Giriş Modu</label>
+                        <select id="select-input-mode" class="form-select">
+                            <option value="vad">Açık Mikrofon (Voice Activity)</option>
+                            <option value="ptt">Bas-Konuş (Push to Talk)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item" id="ptt-key-setting" style="display: none;">
+                        <label>Bas-Konuş Tuşu</label>
+                        <div class="ptt-key-selector">
+                            <span id="ptt-key-name" class="key-tag">Space</span>
+                            <button id="btn-change-ptt-key" class="btn-secondary">Tuşu Değiştir</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Mikrofon Hassasiyeti Eşiği</label>
+                        <div class="slider-row">
+                            <input type="range" id="slider-mic-threshold" min="5" max="60" value="20" class="form-range">
+                            <span id="threshold-val">20%</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="chk-echo" checked>
+                            <span>Yankı Engelleme (Echo Cancellation)</span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="chk-noise" checked>
+                            <span>Gürültü Bastırma (Noise Suppression)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DAVET VE TÜNEL PAYLAŞIM MODALI -->
+        <div id="invite-modal" class="modal-backdrop hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>🌐 Arkadaşlarını Davet Et</h2>
+                    <button id="btn-close-invite" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="invite-section-card">
+                        <div class="invite-header">
+                            <div>
+                                <h4 style="font-size: 14px; font-weight: 700;">1. Farklı Evlerdeki Arkadaşlar İçin (İnternet)</h4>
+                                <p class="invite-sub">Mikrofon izni için şifreli HTTPS bağlantısı açar.</p>
+                            </div>
+                            <span id="room-tunnel-badge" class="badge">Kapalı</span>
+                        </div>
+                        
+                        <div id="room-tunnel-inactive" style="margin-top: 12px;">
+                            <button type="button" id="btn-start-tunnel-room" class="btn-primary" style="width: 100%;">
+                                <span class="spinner hidden" id="room-tunnel-spinner"></span>
+                                <span id="room-tunnel-btn-text">🌐 Tüneli Başlat ve Link Al</span>
+                            </button>
+                        </div>
+
+                        <div id="room-tunnel-active" style="margin-top: 12px;" class="hidden">
+                            <div class="input-with-btn">
+                                <input type="text" id="room-tunnel-url-input" readonly class="form-input-text" value="">
+                                <button type="button" id="btn-copy-room-tunnel" class="btn-secondary">Kopyala</button>
+                            </div>
+                            <div class="tunnel-actions-row">
+                                <span class="badge active" style="font-size: 11px;">● Bağlantı Aktif</span>
+                                <button type="button" id="btn-stop-tunnel-room" class="btn-link-danger">Tüneli Kapat</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="invite-section-card">
+                        <h4 style="font-size: 14px; font-weight: 700;">2. Aynı Ev / Wi-Fi İçin (Yerel Ağ)</h4>
+                        <p class="invite-sub">Aynı modeme bağlı olanlar için direkt yerel link:</p>
+                        <div class="input-with-btn" style="margin-top: 10px;">
+                            <input type="text" id="local-url-input" readonly class="form-input-text" value="">
+                            <button type="button" id="btn-copy-local-url" class="btn-secondary">Kopyala</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SES ELEMANLARI KONTEYNERİ -->
+        <div id="audio-container" style="display: none;"></div>
+
+        <!-- TARAYICI SES ENGELİ UYARISI -->
+        <div id="autoplay-banner" class="autoplay-alert hidden">
+            <span>🔊 Tarayıcınız ses çalmayı durdurdu. <strong>Arkadaşlarınızı duymak için buraya tıklayın!</strong></span>
+        </div>
+
+        <!-- LIGHTBOX GÖRSEL BÜYÜTÜCÜ MODAL -->
+        <div id="lightbox-modal" class="lightbox-backdrop hidden">
+            <div class="lightbox-card">
+                <button type="button" id="btn-close-lightbox" class="btn-close-lightbox" title="Kapat">✕</button>
+                <div class="lightbox-img-wrapper">
+                    <img id="lightbox-img" src="" alt="Tam boy görsel">
+                </div>
+                <div class="lightbox-footer">
+                    <a id="lightbox-download-link" href="#" target="_blank" download="gorsel.png" class="btn-secondary">
+                        <span>⬇️ Yeni Sekmede Aç / İndir</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SESLERİ OYNATMAK İÇİN SENTEZLEME YAZILIMI APP.JS İÇİNDE BULUNMAKTADIR -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
