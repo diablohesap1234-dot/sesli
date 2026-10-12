@@ -1,0 +1,39 @@
+{
+  "name": "AGALAR SESLİ SOHBET",
+  "short_name": "Agalar",
+  "description": "AGALAR SESLİ SOHBET - Düşük gecikmeli, ultra hafif grup sesli ve yazılı iletişim.",
+  "start_url": "/?mode=desktop",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#5865F2",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["social", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Gaming Odasına Bağlan",
+      "url": "/?room=gaming",
+      "description": "Varsayılan gaming odasına doğrudan giriş yap"
+    }
+  ]
+}
