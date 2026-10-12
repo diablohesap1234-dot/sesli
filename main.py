@@ -1,0 +1,583 @@
+import json
+import logging
+import time
+import subprocess
+import re
+import asyncio
+import sqlite3
+import uuid
+import aiofiles
+from typing import Dict, Any, Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, UploadFile, File
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pathlib import Path
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("voice-chat")
+
+app = FastAPI(title="Özel Sesli & Yazılı Sohbet", version="2.0.0")
+
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+UPLOADS_DIR = STATIC_DIR / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = BASE_DIR / "chat.db"
+
+
+class DatabaseManager:
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self._init_db()
+
+    def _init_db(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    room_id TEXT NOT NULL,
+                    sender_id TEXT NOT NULL,
+                    nickname TEXT NOT NULL,
+                    avatar_color TEXT NOT NULL,
+                    text TEXT,
+                    image_url TEXT,
+                    is_private INTEGER DEFAULT 0,
+                    target_id TEXT,
+                    timestamp TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                )
+            """)
+            conn.commit()
+
+    def save_message(self, room_id: str, sender_id: str, nickname: str, avatar_color: str,
+                     text: Optional[str], image_url: Optional[str], is_private: bool,
+                     target_id: Optional[str], timestamp: str) -> dict:
+        now = time.time()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO messages (room_id, sender_id, nickname, avatar_color, text, image_url, is_private, target_id, timestamp, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (room_id, sender_id, nickname, avatar_color, text, image_url, 1 if is_private else 0, target_id, timestamp, now))
+            conn.commit()
+            msg_id = cursor.lastrowid
+        return {
+            "id": msg_id,
+            "room_id": room_id,
+            "sender_id": sender_id,
+            "nickname": nickname,
+            "avatar_color": avatar_color,
+            "text": text,
+            "image_url": image_url,
+            "is_private": is_private,
+            "target_id": target_id,
+            "timestamp": timestamp
+        }
+
+    def get_history(self, room_id: str, client_id: str, limit: int = 80) -> list:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            # Genel mesajlar ve kullanıcının dahil olduğu DM'ler
+            cursor.execute("""
+                SELECT * FROM (
+                    SELECT id, room_id, sender_id, nickname, avatar_color, text, image_url, is_private, target_id, timestamp
+                    FROM messages
+                    WHERE room_id = ? AND (is_private = 0 OR sender_id = ? OR target_id = ?)
+                    ORDER BY id DESC
+                    LIMIT ?
+                ) ORDER BY id ASC
+            """, (room_id, client_id, client_id, limit))
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "sender_id": r["sender_id"],
+                    "nickname": r["nickname"],
+                    "avatar_color": r["avatar_color"],
+                    "text": r["text"],
+                    "image_url": r["image_url"],
+                    "is_private": bool(r["is_private"]),
+                    "target_id": r["target_id"],
+                    "timestamp": r["timestamp"]
+                }
+                for r in rows
+            ]
+
+
+db = DatabaseManager(DB_PATH)
+
+# Room storage structure:
+# rooms[room_id] = {
+#     "password": Optional[str],
+#     "participants": {
+#         client_id: {
+#             "websocket": WebSocket,
+#             "nickname": str,
+#             "avatar_color": str,
+#             "is_muted": bool,
+#             "is_deafened": bool,
+#             "is_speaking": bool
+#         }
+#     }
+# }
+rooms: Dict[str, Dict[str, Any]] = {}
+
+
+class ConnectionManager:
+    @staticmethod
+    def get_room(room_id: str) -> Dict[str, Any]:
+        if room_id not in rooms:
+            rooms[room_id] = {
+                "password": None,
+                "participants": {}
+            }
+        return rooms[room_id]
+
+    @staticmethod
+    async def broadcast_to_room(room_id: str, message: dict, exclude_client_id: Optional[str] = None):
+        if room_id not in rooms:
+            return
+        participants = rooms[room_id]["participants"]
+        dead_clients = []
+        for cid, user_data in participants.items():
+            if exclude_client_id and cid == exclude_client_id:
+                continue
+            try:
+                await user_data["websocket"].send_text(json.dumps(message))
+            except Exception as e:
+                logger.warning(f"Error sending message to client {cid}: {e}")
+                dead_clients.append(cid)
+        
+        for cid in dead_clients:
+            if cid in participants:
+                del participants[cid]
+
+    @staticmethod
+    async def send_to_peer(room_id: str, target_client_id: str, message: dict):
+        if room_id in rooms and target_client_id in rooms[room_id]["participants"]:
+            try:
+                ws = rooms[room_id]["participants"][target_client_id]["websocket"]
+                await ws.send_text(json.dumps(message))
+            except Exception as e:
+                logger.warning(f"Error sending direct message to peer {target_client_id}: {e}")
+
+
+manager = ConnectionManager()
+
+
+class TunnelManager:
+    def __init__(self, base_dir: Path):
+        self.base_dir = base_dir
+        self.exe_path = base_dir / "cloudflared.exe"
+        self.process: Optional[subprocess.Popen] = None
+        self.url: Optional[str] = None
+        self.is_starting = False
+
+    async def start(self) -> dict:
+        if self.process and self.process.poll() is None and self.url:
+            return {"active": True, "url": self.url}
+
+        if not self.exe_path.exists():
+            return {
+                "active": False,
+                "error": "cloudflared.exe bulunamadı! Lütfen dosyanın klasörde olduğundan emin olun."
+            }
+
+        self.is_starting = True
+        self.url = None
+
+        cmd = [str(self.exe_path), "tunnel", "--url", "http://localhost:8000"]
+        try:
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="ignore"
+            )
+        except Exception as e:
+            self.is_starting = False
+            return {"active": False, "error": f"Tünel başlatılamadı: {e}"}
+
+        url_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+        loop = asyncio.get_event_loop()
+
+        def extract_url():
+            for line in self.process.stdout:
+                match = url_pattern.search(line)
+                if match:
+                    return match.group(0)
+            return None
+
+        try:
+            found_url = await asyncio.wait_for(loop.run_in_executor(None, extract_url), timeout=25.0)
+            if found_url:
+                self.url = found_url
+                self.is_starting = False
+                logger.info(f"Cloudflare Tunnel active: {self.url}")
+                return {"active": True, "url": self.url}
+            else:
+                self.stop()
+                return {"active": False, "error": "Tünel linki yakalanamadı."}
+        except asyncio.TimeoutError:
+            self.stop()
+            return {"active": False, "error": "Zaman aşımı: Tünel yanıt vermedi."}
+        except Exception as e:
+            self.stop()
+            return {"active": False, "error": str(e)}
+
+    def stop(self) -> dict:
+        if self.process:
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=2)
+            except Exception:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
+        self.process = None
+        self.url = None
+        self.is_starting = False
+        logger.info("Cloudflare Tunnel stopped.")
+        return {"active": False, "url": None}
+
+    def status(self) -> dict:
+        is_active = bool(self.process and self.process.poll() is None and self.url)
+        return {
+            "active": is_active,
+            "is_starting": self.is_starting,
+            "url": self.url if is_active else None
+        }
+
+
+tunnel_manager = TunnelManager(BASE_DIR)
+
+
+@app.on_event("shutdown")
+def on_shutdown():
+    tunnel_manager.stop()
+
+
+@app.get("/api/tunnel/status")
+async def get_tunnel_status():
+    return tunnel_manager.status()
+
+
+@app.post("/api/tunnel/start")
+async def start_tunnel():
+    res = await tunnel_manager.start()
+    return res
+
+
+@app.post("/api/tunnel/stop")
+async def stop_tunnel():
+    return tunnel_manager.stop()
+
+
+@app.post("/api/upload")
+async def upload_image(file: UploadFile = File(...)):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Sadece resim dosyaları kabul edilir.")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
+        ext = ".png"
+
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOADS_DIR / filename
+
+    content = await file.read()
+    if len(content) > 15 * 1024 * 1024:  # 15MB limit
+        raise HTTPException(status_code=400, detail="Görsel 15MB'tan küçük olmalıdır.")
+
+    async with aiofiles.open(dest, "wb") as f:
+        await f.write(content)
+
+    return {"url": f"/static/uploads/{filename}"}
+
+
+@app.get("/")
+async def get_index():
+    index_path = STATIC_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="index.html bulunamadı")
+    return FileResponse(index_path)
+
+
+@app.get("/api/room-check/{room_id}")
+async def check_room(room_id: str):
+    """Check if room exists and requires password"""
+    if room_id in rooms and len(rooms[room_id]["participants"]) > 0:
+        return {
+            "exists": True,
+            "has_password": bool(rooms[room_id]["password"]),
+            "user_count": len(rooms[room_id]["participants"])
+        }
+    return {
+        "exists": False,
+        "has_password": False,
+        "user_count": 0
+    }
+
+
+@app.websocket("/ws/{room_id}")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    room_id: str,
+    client_id: str = Query(...),
+    nickname: str = Query("Misafir"),
+    avatar_color: str = Query("#5865F2"),
+    voice_channel: str = Query("channel-1"),
+    password: Optional[str] = Query(None)
+):
+    await websocket.accept()
+    room = manager.get_room(room_id)
+
+    # Room password validation
+    if room["password"] is not None and len(room["participants"]) > 0:
+        if room["password"] != password:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "Hatalı oda şifresi!"
+            }))
+            await websocket.close(code=1008)
+            return
+    elif len(room["participants"]) == 0 and password:
+        # First person creates the room password if provided
+        room["password"] = password
+
+    # Limit to max 10 users for optimal mesh performance (target is 6)
+    if len(room["participants"]) >= 10:
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "Oda maksimum kapasiteye ulaştı (10 kişi)."
+        }))
+        await websocket.close(code=1008)
+        return
+
+    # Add client to room
+    room["participants"][client_id] = {
+        "websocket": websocket,
+        "nickname": nickname,
+        "avatar_color": avatar_color,
+        "voice_channel": voice_channel,
+        "is_muted": False,
+        "is_deafened": False,
+        "is_speaking": False
+    }
+
+    logger.info(f"User joined: {nickname} ({client_id}) -> Room: {room_id} [Channel: {voice_channel}] (Total: {len(room['participants'])})")
+
+    # Prepare existing users list to send to newly joined peer
+    existing_users = [
+        {
+            "client_id": cid,
+            "nickname": u["nickname"],
+            "avatar_color": u["avatar_color"],
+            "voice_channel": u.get("voice_channel", "channel-1"),
+            "is_muted": u["is_muted"],
+            "is_deafened": u["is_deafened"],
+            "is_speaking": u["is_speaking"]
+        }
+        for cid, u in room["participants"].items()
+        if cid != client_id
+    ]
+
+    # 1. Send connection acknowledged, current room members and chat history
+    history = db.get_history(room_id, client_id)
+    await websocket.send_text(json.dumps({
+        "type": "room-welcome",
+        "room_id": room_id,
+        "your_id": client_id,
+        "your_voice_channel": voice_channel,
+        "users": existing_users,
+        "history": history
+    }))
+
+    # 2. Notify existing users that new user joined
+    await manager.broadcast_to_room(
+        room_id,
+        {
+            "type": "user-joined",
+            "client_id": client_id,
+            "nickname": nickname,
+            "avatar_color": avatar_color,
+            "voice_channel": voice_channel,
+            "is_muted": False,
+            "is_deafened": False,
+            "is_speaking": False
+        },
+        exclude_client_id=client_id
+    )
+
+    # 3. Broadcast system message in chat
+    await manager.broadcast_to_room(
+        room_id,
+        {
+            "type": "chat-system",
+            "text": f"🎉 {nickname} odaya katıldı.",
+            "timestamp": time.strftime("%H:%M")
+        }
+    )
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            msg_type = message.get("type")
+
+            if msg_type == "signal":
+                # WebRTC Signaling message (offer, answer, candidate)
+                target_id = message.get("target_id")
+                signal_data = message.get("data")
+                if target_id and room_id in rooms:
+                    # Yalnızca aynı ses kanalında olan kullanıcılara ses sinyali iletilir
+                    sender_rec = room["participants"].get(client_id)
+                    target_rec = room["participants"].get(target_id)
+                    if sender_rec and target_rec and sender_rec.get("voice_channel") == target_rec.get("voice_channel"):
+                        await manager.send_to_peer(
+                            room_id,
+                            target_id,
+                            {
+                                "type": "signal",
+                                "sender_id": client_id,
+                                "data": signal_data
+                            }
+                        )
+
+            elif msg_type == "switch-channel":
+                # Ses kanalı değiştirme (Ses Odası 1, 2, 3, 4, 5)
+                new_channel = message.get("channel_id", "channel-1")
+                user_record = room["participants"].get(client_id)
+                if user_record:
+                    old_channel = user_record.get("voice_channel", "channel-1")
+                    user_record["voice_channel"] = new_channel
+                    logger.info(f"User {nickname} ({client_id}) switched channel from {old_channel} to {new_channel}")
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "channel-switched",
+                            "client_id": client_id,
+                            "nickname": nickname,
+                            "old_channel": old_channel,
+                            "new_channel": new_channel
+                        }
+                    )
+
+            elif msg_type == "chat":
+                # Text or Image chat message (Public or Private DM)
+                text = message.get("text", "").strip()
+                image_url = message.get("image_url")
+                is_private = bool(message.get("is_private", False))
+                target_id = message.get("target_id")
+
+                if text or image_url:
+                    text = text[:2000] if text else ""
+                    saved = db.save_message(
+                        room_id=room_id,
+                        sender_id=client_id,
+                        nickname=nickname,
+                        avatar_color=avatar_color,
+                        text=text,
+                        image_url=image_url,
+                        is_private=is_private,
+                        target_id=target_id,
+                        timestamp=time.strftime("%H:%M")
+                    )
+
+                    chat_payload = {
+                        "type": "chat",
+                        "id": saved["id"],
+                        "sender_id": client_id,
+                        "nickname": nickname,
+                        "avatar_color": avatar_color,
+                        "text": text,
+                        "image_url": image_url,
+                        "is_private": is_private,
+                        "target_id": target_id,
+                        "timestamp": saved["timestamp"]
+                    }
+
+                    if is_private and target_id:
+                        # Özel mesajı sadece hedef kişiye ve gönderene ilet
+                        await manager.send_to_peer(room_id, target_id, chat_payload)
+                        await websocket.send_text(json.dumps(chat_payload))
+                    else:
+                        # Genel oda sohbeti
+                        await manager.broadcast_to_room(room_id, chat_payload)
+
+            elif msg_type == "state-change":
+                # Audio state changed (muted, deafened, speaking)
+                user_record = room["participants"].get(client_id)
+                if user_record:
+                    if "is_muted" in message:
+                        user_record["is_muted"] = bool(message["is_muted"])
+                    if "is_deafened" in message:
+                        user_record["is_deafened"] = bool(message["is_deafened"])
+                    if "is_speaking" in message:
+                        user_record["is_speaking"] = bool(message["is_speaking"])
+
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "user-state",
+                            "client_id": client_id,
+                            "is_muted": user_record["is_muted"],
+                            "is_deafened": user_record["is_deafened"],
+                            "is_speaking": user_record["is_speaking"]
+                        },
+                        exclude_client_id=client_id
+                    )
+
+            elif msg_type == "ping":
+                # Heartbeat to measure latency
+                await websocket.send_text(json.dumps({
+                    "type": "pong",
+                    "t": message.get("t")
+                }))
+
+    except WebSocketDisconnect:
+        logger.info(f"Client disconnected: {client_id} ({nickname})")
+    except Exception as e:
+        logger.error(f"WebSocket error for {client_id}: {e}")
+    finally:
+        # Clean up client
+        if room_id in rooms and client_id in rooms[room_id]["participants"]:
+            del rooms[room_id]["participants"][client_id]
+            logger.info(f"User left: {nickname}. Remaining in {room_id}: {len(rooms[room_id]['participants'])}")
+
+            # Notify others
+            await manager.broadcast_to_room(
+                room_id,
+                {
+                    "type": "user-left",
+                    "client_id": client_id,
+                    "nickname": nickname
+                }
+            )
+            await manager.broadcast_to_room(
+                room_id,
+                {
+                    "type": "chat-system",
+                    "text": f"👋 {nickname} odadan ayrıldı.",
+                    "timestamp": time.strftime("%H:%M")
+                }
+            )
+
+            # If room is completely empty, clean up room and reset password
+            if len(rooms[room_id]["participants"]) == 0:
+                del rooms[room_id]
+                logger.info(f"Room {room_id} is now empty and has been removed.")
+
+
+# Mount static directory for JS, CSS, assets
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
