@@ -101,6 +101,9 @@ const el = {
 
     // Ses Odaları Kanalları
     channelsSidebar: document.getElementById('channels-sidebar'),
+    btnMobileChannelsToggle: document.getElementById('btn-mobile-channels-toggle'),
+    btnCloseChannelsSidebar: document.getElementById('btn-close-channels-sidebar'),
+    channelsBackdrop: document.getElementById('channels-backdrop'),
     voiceChannelsList: document.getElementById('voice-channels-list'),
     mobileChannelStrip: document.getElementById('mobile-channel-strip'),
     stripButtons: document.getElementById('strip-buttons'),
@@ -124,6 +127,8 @@ const el = {
     copyBtnText: document.getElementById('copy-btn-text'),
     btnLeaveRoom: document.getElementById('btn-leave-room'),
     btnSettingsToggle: document.getElementById('btn-settings-toggle'),
+    btnMobileChatToggle: document.getElementById('btn-mobile-chat-toggle'),
+    mobileChatUnreadDot: document.getElementById('mobile-chat-unread-dot'),
 
     // Invite Modal
     inviteModal: document.getElementById('invite-modal'),
@@ -143,6 +148,8 @@ const el = {
     // Voice & Chat Layout
     voiceGrid: document.getElementById('voice-grid'),
     chatSection: document.getElementById('chat-section'),
+    btnBackFromChat: document.getElementById('btn-back-from-chat'),
+    mobileChatTitle: document.getElementById('mobile-chat-title'),
     chatMessages: document.getElementById('chat-messages'),
     chatForm: document.getElementById('chat-form'),
     chatInput: document.getElementById('chat-input'),
@@ -162,6 +169,7 @@ const el = {
     modeText: document.getElementById('mode-text'),
     pttKeyBadge: document.getElementById('ptt-key-badge'),
     btnChatToggle: document.getElementById('btn-chat-toggle'),
+    dockChatUnreadDot: document.getElementById('dock-chat-unread-dot'),
 
     // Settings Modal
     settingsModal: document.getElementById('settings-modal'),
@@ -832,6 +840,12 @@ function handleServerMessage(msg) {
 
             if (msg.sender_id !== state.myId) {
                 SoundEffects.chatMessage();
+                // Mobil ve Alt Dock Okunmamış Mesaj Göstergesi
+                const isChatOpen = el.chatSection && el.chatSection.classList.contains('chat-open') && !el.chatSection.classList.contains('hidden');
+                if (!isChatOpen) {
+                    if (el.mobileChatUnreadDot) el.mobileChatUnreadDot.classList.remove('hidden');
+                    if (el.dockChatUnreadDot) el.dockChatUnreadDot.classList.remove('hidden');
+                }
             }
             break;
 
@@ -1439,12 +1453,49 @@ function isMessageForActiveTab(msg) {
     }
 }
 
+function openMobileChannels() {
+    if (el.channelsSidebar) el.channelsSidebar.classList.add('drawer-open');
+    if (el.channelsBackdrop) {
+        el.channelsBackdrop.classList.remove('hidden');
+        el.channelsBackdrop.classList.add('active');
+    }
+}
+
+function closeMobileChannels() {
+    if (el.channelsSidebar) el.channelsSidebar.classList.remove('drawer-open');
+    if (el.channelsBackdrop) {
+        el.channelsBackdrop.classList.remove('active');
+        el.channelsBackdrop.classList.add('hidden');
+    }
+}
+
+function openMobileChat() {
+    if (el.chatSection) {
+        el.chatSection.classList.remove('hidden');
+        el.chatSection.classList.add('chat-open');
+    }
+    if (el.btnChatToggle) el.btnChatToggle.classList.add('active');
+    if (el.mobileChatUnreadDot) el.mobileChatUnreadDot.classList.add('hidden');
+    if (el.dockChatUnreadDot) el.dockChatUnreadDot.classList.add('hidden');
+    setTimeout(() => {
+        if (el.chatMessages) el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+    }, 150);
+}
+
+function closeMobileChat() {
+    if (el.chatSection) {
+        el.chatSection.classList.remove('chat-open');
+    }
+}
+
 function switchChatTab(tabId) {
     state.chatTab = tabId;
     if (tabId === 'general') {
         updateGeneralTabUnread(false);
+        if (el.mobileChatTitle) el.mobileChatTitle.textContent = '# genel-sohbet';
     } else if (state.dmTabs[tabId]) {
         state.dmTabs[tabId].unreadCount = 0;
+        if (el.mobileChatTitle) el.mobileChatTitle.textContent = `@ ${state.dmTabs[tabId].nickname || 'Özel Mesaj'}`;
     }
     renderChatTabs();
     renderChatMessages();
@@ -1464,9 +1515,13 @@ function openDirectMessage(userId, nickname, avatarColor) {
     switchChatTab(userId);
 
     // Mobilde veya kapalıysa sohbet panelini aç
-    if (el.chatSection && el.chatSection.classList.contains('hidden')) {
-        el.chatSection.classList.remove('hidden');
-        if (el.btnChatToggle) el.btnChatToggle.classList.add('active');
+    if (window.innerWidth <= 768) {
+        openMobileChat();
+    } else {
+        if (el.chatSection && el.chatSection.classList.contains('hidden')) {
+            el.chatSection.classList.remove('hidden');
+            if (el.btnChatToggle) el.btnChatToggle.classList.add('active');
+        }
     }
 }
 
@@ -1834,6 +1889,12 @@ function switchToRoomUI() {
 
     renderVoiceChannelsUI();
 
+    // Mobilde başlangıçta ses odası ana görünüm olarak gelsin, çekmece ve sohbet kapalı olsun
+    if (window.innerWidth <= 768) {
+        closeMobileChat();
+        closeMobileChannels();
+    }
+
     // URL'yi güncelle (kolay paylaşım için)
     const url = new URL(window.location);
     url.searchParams.set('room', state.roomId);
@@ -1991,6 +2052,8 @@ function switchToLobbyUI() {
     state.chatTab = 'general';
     cancelStagedImage();
     renderChatTabs();
+    closeMobileChannels();
+    closeMobileChat();
 }
 
 function startPingHeartbeat() {
@@ -2588,6 +2651,7 @@ function initEventListeners() {
             const chId = btn.getAttribute('data-channel-id');
             if (chId) {
                 switchVoiceChannel(chId);
+                closeMobileChannels();
             }
         });
     });
@@ -2664,10 +2728,51 @@ function initEventListeners() {
         });
     }
 
-    // Sohbet Paneli Aç / Kapat
+    // Mobil Ses Odaları Çekmecesi (Drawer) Kontrolleri
+    if (el.btnMobileChannelsToggle) {
+        el.btnMobileChannelsToggle.addEventListener('click', openMobileChannels);
+    }
+    if (el.btnCloseChannelsSidebar) {
+        el.btnCloseChannelsSidebar.addEventListener('click', closeMobileChannels);
+    }
+    if (el.channelsBackdrop) {
+        el.channelsBackdrop.addEventListener('click', closeMobileChannels);
+    }
+
+    // Mobil Chat Açma ve Geri Dönme Kontrolleri
+    if (el.btnMobileChatToggle) {
+        el.btnMobileChatToggle.addEventListener('click', () => {
+            if (el.chatSection && el.chatSection.classList.contains('chat-open')) {
+                closeMobileChat();
+            } else {
+                openMobileChat();
+            }
+        });
+    }
+    if (el.btnBackFromChat) {
+        el.btnBackFromChat.addEventListener('click', () => {
+            closeMobileChat();
+            if (el.btnChatToggle) el.btnChatToggle.classList.remove('active');
+        });
+    }
+
+    // Sohbet Paneli Aç / Kapat (Desktop & Mobil Uyumlu)
     el.btnChatToggle.addEventListener('click', () => {
-        el.chatSection.classList.toggle('hidden');
-        el.btnChatToggle.classList.toggle('active');
+        if (window.innerWidth <= 768) {
+            if (el.chatSection && el.chatSection.classList.contains('chat-open')) {
+                closeMobileChat();
+                el.btnChatToggle.classList.remove('active');
+            } else {
+                openMobileChat();
+            }
+        } else {
+            el.chatSection.classList.toggle('hidden');
+            el.btnChatToggle.classList.toggle('active');
+            if (!el.chatSection.classList.contains('hidden')) {
+                if (el.dockChatUnreadDot) el.dockChatUnreadDot.classList.add('hidden');
+                if (el.mobileChatUnreadDot) el.mobileChatUnreadDot.classList.add('hidden');
+            }
+        }
     });
 
     // Konuşma Modu Hızlı Değiştirme
