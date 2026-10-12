@@ -325,37 +325,29 @@
                         </div>
                     </div>
 
-                    <!-- BİRLİKTE DİZİ / VİDEO İZLEME VE ORTAK TARAYICI SİNEMA SAHNESİ (CENTER STAGE) -->
+                    <!-- CANLI DİZİ, FİLM VE EKRAN YAYINI SAHNESİ (CENTER STAGE) -->
                     <div id="shared-browser-stage" class="shared-browser-stage hidden">
                         <!-- ÜST KONTROL ÇUBUĞU -->
                         <div class="stage-topbar">
                             <div class="stage-topbar-left">
-                                <span class="stage-brand-icon">🎬</span>
+                                <span class="stage-brand-icon">🖥️</span>
                                 <div class="stage-brand-meta">
-                                    <span class="stage-brand-title">BİRLİKTE İZLE</span>
+                                    <span class="stage-brand-title">CANLI DİZİ & EKRAN YAYINI</span>
                                     <span id="stage-controller-badge" class="stage-ctrl-badge">👑 Yönetici: Sen</span>
                                 </div>
                             </div>
 
-                            <form id="stage-url-form" class="stage-url-form">
-                                <div class="stage-url-input-wrap">
-                                    <span class="stage-url-icon">🔗</span>
-                                    <input type="text" id="stage-url-input" placeholder="YouTube, Dizi/Film (MP4) veya Site Linki Yapıştır..." autocomplete="off">
-                                    <button type="submit" id="btn-stage-load-url" class="btn-stage-go">Aç</button>
-                                </div>
-                            </form>
-
                             <div class="stage-topbar-right">
-                                <button type="button" id="btn-stage-share-screen" class="btn-stage-pill" title="Dizi Sekmesini Sesli Paylaş (WebRTC Canlı Yayın)">
-                                    🖥️ Sekme Yayını
+                                <button type="button" id="btn-stage-share-screen" class="btn-stage-pill btn-stage-stream-toggle" title="Dizi Sekmesini veya Ekranı Sesli Paylaş (WebRTC Canlı Yayın)">
+                                    🖥️ Yayını Başlat
                                 </button>
-                                <button type="button" id="btn-stage-request-ctrl" class="btn-stage-pill btn-req-ctrl hidden" title="Tarayıcı kontrolünü devralmak için izin iste">
-                                    ✋ Kontrol İste
+                                <button type="button" id="btn-stage-request-ctrl" class="btn-stage-pill btn-req-ctrl hidden" title="Yayın yetkisini devralmak için izin iste">
+                                    ✋ Yayın İste
                                 </button>
                                 <button type="button" id="btn-stage-fullscreen" class="btn-stage-icon" title="Tam Ekran Modu">
                                     ⛶
                                 </button>
-                                <button type="button" id="btn-stage-close" class="btn-stage-icon btn-stage-close" title="Sinema Sahnesini Kapat">
+                                <button type="button" id="btn-stage-close" class="btn-stage-icon btn-stage-close" title="Yayını Kapat">
                                     ✕
                                 </button>
                             </div>
@@ -367,39 +359,27 @@
                             <div id="stage-empty-view" class="stage-empty-view">
                                 <div class="empty-view-card">
                                     <div class="empty-view-icon">🍿</div>
-                                    <h3>Birlikte Dizi, Film & Video İzleme</h3>
+                                    <h3>Birlikte Dizi, Film & Ekran Yayını</h3>
+                                    <p class="empty-desc">İstediğiniz dizi sitesi (Dizipal vb.), Netflix, YouTube veya masaüstü ekranınızı sesli ve full HD olarak odadaki tüm arkadaşlarınızla canlı izleyin.</p>
                                     
+                                    <!-- 1-CLICK SEKME VE EKRAN YAYINI CTA -->
                                     <div class="empty-stream-cta">
                                         <button type="button" id="btn-empty-start-stream" class="btn-primary btn-stream-main">
-                                            <span>🖥️ Dizi / Sekme Yayını Başlat</span>
-                                            <span class="btn-subtext">(Dizipal, Google, Netflix vs. için %100 Çalışan Çözüm)</span>
+                                            <span>🖥️ Sekme / Ekran Yayını Başlat</span>
+                                            <span class="btn-subtext">(Dizipal, Netflix, YouTube vb. sekmeyi seçip sesli aktarın)</span>
                                         </button>
                                     </div>
 
                                     <div class="empty-info-box">
-                                        <p><strong>ℹ️ "Bağlanmayı Reddetti" Uyarısı Neden Olur?</strong><br>
-                                        Google, YouTube ana sayfası ve dizi siteleri güvenlik kuralı nedeniyle başka sitelerin içine doğrudan gömülmeyi engeller. Dizi sitelerini veya Google'ı izlemek için yukarıdaki <strong>"Sekme Yayını Başlat"</strong> butonuna basarak açtığınız sekmesini sesli olarak odaya aktarabilirsiniz!</p>
-                                    </div>
-
-                                    <div class="empty-view-shortcuts">
-                                        <span class="shortcuts-label">Hızlı Başlat:</span>
-                                        <button type="button" class="empty-chip" data-url="https://www.youtube.com/watch?v=jfKfPfyJRdk">▶ Lofi Canlı Müzik</button>
-                                        <button type="button" class="empty-chip" data-url="https://duckduckgo.com">🔍 Gömülü Web Arama</button>
-                                        <button type="button" class="empty-chip" data-url="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4">🎬 Örnek Film (MP4 Test)</button>
+                                        <p><strong>💡 Sıfır Gecikme & Sesli Aktarım:</strong> Web siteleri güvenlik nedeniyle dışarıdan gömülmeyi engellediği için en sorunsuz yöntem WebRTC sekme yayınıdır. Tarayıcınızda açtığınız sekmedeki videonun sesi ve görüntüsü sıfır gecikmeyle tüm odaya canlı yansıtılır.</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- YouTube / Web İframe Görüntüleyici -->
-                            <iframe id="stage-iframe" class="stage-media-item hidden" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-downloads allow-modals" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-
-                            <!-- Doğrudan Video Oynatıcı (.mp4, .webm vs.) -->
-                            <video id="stage-video" class="stage-media-item hidden" playsinline controls></video>
-
                             <!-- WebRTC Sekme / Dizi Canlı Yayını -->
                             <div id="stage-stream-wrap" class="stage-media-item hidden">
                                 <video id="stage-stream-video" autoplay playsinline></video>
-                                <div class="live-stream-badge">🔴 CANLI DİZİ/SEKME YAYINI</div>
+                                <div class="live-stream-badge">🔴 CANLI DİZİ & EKRAN YAYINI</div>
                             </div>
                         </div>
 
@@ -426,9 +406,9 @@
                             <span class="tab-title">genel-sohbet</span>
                         </button>
                         <!-- Dinamik DM Sekmeleri buraya eklenecek -->
-                        <button type="button" id="btn-shared-browser-toggle" class="btn-shared-browser-toggle" title="Ortak Tarayıcı / Birlikte Dizi & Video İzle">
-                            <span class="browser-btn-icon">🎬</span>
-                            <span>Birlikte İzle</span>
+                        <button type="button" id="btn-shared-browser-toggle" class="btn-shared-browser-toggle" title="Canlı Dizi & Ekran Yayını">
+                            <span class="browser-btn-icon">🖥️</span>
+                            <span>Canlı Yayın</span>
                         </button>
                     </div>
 
@@ -447,11 +427,32 @@
                         <span class="staging-hint">Görsel hazır • Göndermek için Enter'a basın</span>
                     </div>
 
+                    <!-- EMOJİ SEÇİCİ POPUP -->
+                    <div id="chat-emoji-picker" class="chat-emoji-picker hidden">
+                        <div class="emoji-picker-header">
+                            <span class="emoji-picker-title">😀 Emojiler</span>
+                            <button type="button" id="btn-close-emoji" class="emoji-close-btn" title="Kapat">✕</button>
+                        </div>
+                        <div class="emoji-nav-tabs">
+                            <button type="button" class="emoji-nav-tab active" data-cat="faces" title="Yüzler">😀</button>
+                            <button type="button" class="emoji-nav-tab" data-cat="hands" title="Jestler">👍</button>
+                            <button type="button" class="emoji-nav-tab" data-cat="popular" title="Popüler">🔥</button>
+                            <button type="button" class="emoji-nav-tab" data-cat="gaming" title="Oyun & Dizi">🎮</button>
+                            <button type="button" class="emoji-nav-tab" data-cat="hearts" title="Kalpler">❤️</button>
+                        </div>
+                        <div class="emoji-grid" id="emoji-grid">
+                            <!-- Emojiler JS ile dinamik listelenir -->
+                        </div>
+                    </div>
+
                     <form id="chat-form" class="chat-input-bar">
-                        <!-- GÖRSEL YÜKLEME BUTONU VE GİZLİ FILE INPUT -->
+                        <!-- GÖRSEL VE EMOJİ BUTONLARI -->
                         <input type="file" id="chat-file-input" accept="image/*" class="hidden">
                         <button type="button" id="btn-attach-image" class="btn-attach" title="Görsel Ekle (veya direkt Ctrl+V ile yapıştır)">
                             📷
+                        </button>
+                        <button type="button" id="btn-toggle-emoji" class="btn-attach" title="Emoji Seç">
+                            😊
                         </button>
 
                         <input type="text" id="chat-input" placeholder="Mesaj yaz veya resim yapıştır (Ctrl+V)..." maxlength="2000" autocomplete="off">

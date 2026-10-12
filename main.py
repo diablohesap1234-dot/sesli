@@ -344,36 +344,130 @@ async def upload_image(file: UploadFile = File(...)):
 
 @app.get("/api/proxy")
 async def web_proxy(url: str = Query(...)):
-    """Web Proxy: X-Frame-Options ve CSP başlıklarını temizleyerek web sitelerinin iframe içinde açılabilmesini sağlar"""
+    """Web Proxy: X-Frame-Options ve CSP başlıklarını temizleyerek, form ve linkleri yönlendirerek gerçek web gezintisi sağlar"""
     target = url.strip()
-    if not target.startswith("http://") and not target.startswith("https://"):
+    if target.startswith("https:///"):
+        target = "https://" + target[9:]
+    elif target.startswith("http:///"):
+        target = "http://" + target[8:]
+    elif not target.startswith("http://") and not target.startswith("https://"):
         target = "https://" + target
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=12.0, verify=False) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0, verify=False) as client:
             resp = await client.get(
                 target,
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+                    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                    "Sec-Ch-Ua-Mobile": "?0",
+                    "Sec-Ch-Ua-Platform": '"Windows"'
                 }
             )
             content_type = resp.headers.get("content-type", "text/html")
+            final_url = str(resp.url)
+
             headers = {
                 "X-Frame-Options": "ALLOWALL",
                 "Content-Security-Policy": "frame-ancestors *",
-                "Access-Control-Allow-Origin": "*"
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-cache"
             }
+
             if "text/html" in content_type:
                 html = resp.text
-                base_tag = f'<base href="{target}">'
+
+                # 1. target="_top", target="_blank", target="_parent" yerine target="_self" yap
+                html = re.sub(r'target\s*=\s*["\']?(_top|_blank|_parent)["\']?', 'target="_self"', html, flags=re.IGNORECASE)
+
+                # 2. Base tag ekle
+                base_tag = f'<base href="{final_url}">'
+
+                # 3. Interceptor script: link tıklamalarını ve form gönderimlerini (Google arama dahil) yakala ve proxy üzerinden ilerlet
+                interceptor_script = f"""
+                <script id="agalar-proxy-nav">
+                (function() {{
+                    var CURRENT_PAGE = "{final_url}";
+                    function toProxy(u) {{
+                        if (!u || u.startsWith('javascript:') || u.startsWith('#') || u.startsWith('data:')) return u;
+                        try {{
+                            var full = new URL(u, CURRENT_PAGE).href;
+                            // Google yönlendirme linklerini çöz (örn: google.com/url?q=...)
+                            if (full.indexOf('google.com/url?') !== -1 && full.indexOf('q=') !== -1) {{
+                                var uObj = new URL(full);
+                                var realUrl = uObj.searchParams.get('q');
+                                if (realUrl && realUrl.startsWith('http')) full = realUrl;
+                            }}
+                            return '/api/proxy?url=' + encodeURIComponent(full);
+                        }} catch(e) {{
+                            return u;
+                        }}
+                    }}
+
+                    // Tüm link tıklamalarını yakala
+                    document.addEventListener('click', function(e) {{
+                        var a = e.target.closest('a');
+                        if (a && a.href) {{
+                            var href = a.getAttribute('href');
+                            if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {{
+                                e.preventDefault();
+                                e.stopPropagation();
+                                var orig = a.href;
+                                try {{
+                                    orig = new URL(orig, CURRENT_PAGE).href;
+                                    if (orig.indexOf('google.com/url?') !== -1 && orig.indexOf('q=') !== -1) {{
+                                        var real = new URL(orig).searchParams.get('q');
+                                        if (real && real.startsWith('http')) orig = real;
+                                    }}
+                                }} catch(err){{}}
+                                try {{
+                                    window.parent.postMessage({{ type: 'agalar-browser-navigated', url: orig }}, '*');
+                                }} catch(err){{}}
+                                window.location.href = toProxy(orig);
+                            }}
+                        }}
+                    }}, true);
+
+                    // Form gönderimlerini (Google arama vb.) yakala
+                    document.addEventListener('submit', function(e) {{
+                        var form = e.target;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var action = form.getAttribute('action') || CURRENT_PAGE;
+                        var absAction = new URL(action, CURRENT_PAGE);
+                        var formData = new FormData(form);
+                        var params = new URLSearchParams();
+                        for (var pair of formData.entries()) {{
+                            params.append(pair[0], pair[1]);
+                        }}
+                        var fullUrl = absAction.origin + absAction.pathname + (params.toString() ? ('?' + params.toString()) : '');
+                        try {{
+                            window.parent.postMessage({{ type: 'agalar-browser-navigated', url: fullUrl }}, '*');
+                        }} catch(err){{}}
+                        window.location.href = toProxy(fullUrl);
+                    }}, true);
+
+                    // Frame-busting scriptlerini etkisiz kıl
+                    try {{
+                        Object.defineProperty(window, 'top', {{ get: function() {{ return window.self; }} }});
+                        Object.defineProperty(window, 'parent', {{ get: function() {{ return window.self; }} }});
+                    }} catch(e) {{}}
+                }})();
+                </script>
+                """
+
+                injected = base_tag + "\n" + interceptor_script
                 if "<head>" in html:
-                    html = html.replace("<head>", f"<head>{base_tag}", 1)
+                    html = html.replace("<head>", f"<head>{injected}", 1)
                 elif "<HEAD>" in html:
-                    html = html.replace("<HEAD>", f"<HEAD>{base_tag}", 1)
+                    html = html.replace("<HEAD>", f"<HEAD>{injected}", 1)
                 elif "<html>" in html:
-                    html = html.replace("<html>", f"<html><head>{base_tag}</head>", 1)
+                    html = html.replace("<html>", f"<html><head>{injected}</head>", 1)
+                else:
+                    html = injected + html
+
                 return Response(content=html, media_type="text/html", headers=headers)
 
             return Response(content=resp.content, media_type=content_type, headers=headers)
