@@ -1,0 +1,1766 @@
+:root {
+    --bg-main: #111214;
+    --bg-surface: #1e1f22;
+    --bg-card: #2b2d31;
+    --bg-card-hover: #35373c;
+    --bg-input: #383a40;
+    --border-color: rgba(255, 255, 255, 0.08);
+    --border-highlight: rgba(88, 101, 242, 0.4);
+
+    --primary: #5865f2;
+    --primary-hover: #4752c4;
+    --success: #23a55a;
+    --danger: #f23f43;
+    --warning: #fee75c;
+
+    --text-primary: #f2f3f5;
+    --text-secondary: #949ba4;
+    --text-muted: #6d727a;
+
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --radius-full: 9999px;
+
+    --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: var(--font);
+    line-height: 1.5;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    -webkit-font-smoothing: antialiased;
+}
+
+#app {
+    height: 100%;
+    width: 100%;
+    position: relative;
+}
+
+.screen-view {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ==========================================================================
+   1. GİRİŞ EKRANI (LOBBY)
+   ========================================================================== */
+#lobby-screen {
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 10%, rgba(88, 101, 242, 0.15), transparent 70%), var(--bg-main);
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.lobby-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.1);
+    width: 100%;
+    max-width: 480px;
+    padding: 36px;
+    animation: fadeInScale 0.3s ease-out;
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.lobby-header {
+    text-align: center;
+    margin-bottom: 28px;
+}
+
+.app-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, #5865f2, #eb459e);
+    margin-bottom: 16px;
+    box-shadow: 0 8px 24px rgba(88, 101, 242, 0.3);
+}
+
+.logo-icon {
+    font-size: 32px;
+}
+
+.lobby-header h1 {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+}
+
+.subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.lobby-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-row {
+    display: flex;
+    gap: 12px;
+}
+
+.flex-1 {
+    flex: 1;
+}
+
+label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+}
+
+input[type="text"],
+input[type="password"],
+.form-select {
+    background: var(--bg-input);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font);
+    font-size: 15px;
+    padding: 12px 14px;
+    outline: none;
+    transition: var(--transition);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+.form-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(88, 101, 242, 0.2);
+}
+
+.color-picker {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.color-swatch {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background-color: var(--c);
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.color-swatch:hover {
+    transform: scale(1.15);
+}
+
+.color-swatch.active {
+    border-color: #ffffff;
+    box-shadow: 0 0 12px var(--c);
+    transform: scale(1.15);
+}
+
+/* Mikrofon Test Kutusu */
+.mic-test-box {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+}
+
+.mic-test-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.badge {
+    background: var(--bg-card);
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.badge.active {
+    background: rgba(35, 165, 90, 0.2);
+    color: var(--success);
+}
+
+.mic-meter-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-input);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    position: relative;
+}
+
+.mic-meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+    border-radius: var(--radius-full);
+    transition: width 0.05s ease-out;
+}
+
+.mic-tip {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.4;
+}
+
+.error-box {
+    background: rgba(242, 63, 67, 0.15);
+    border: 1px solid rgba(242, 63, 67, 0.4);
+    color: #ff787b;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 16px;
+    font-weight: 700;
+    padding: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: var(--transition);
+    box-shadow: 0 4px 14px rgba(88, 101, 242, 0.4);
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   2. ODA EKRANI (ROOM SCREEN)
+   ========================================================================== */
+#room-screen {
+    flex-direction: column;
+}
+
+/* Üst Navigasyon */
+.room-navbar {
+    height: 56px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    flex-shrink: 0;
+}
+
+.room-nav-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.channel-tag {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.user-count-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-card);
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.online-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+}
+
+.room-nav-center {
+    display: flex;
+    align-items: center;
+}
+
+.latency-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.2);
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+}
+
+.ping-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+}
+
+.room-nav-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.btn-secondary {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: var(--transition);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-card-hover);
+}
+
+.btn-danger {
+    background: rgba(242, 63, 67, 0.15);
+    color: var(--danger);
+    border: 1px solid rgba(242, 63, 67, 0.3);
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: var(--transition);
+}
+
+.btn-danger:hover {
+    background: var(--danger);
+    color: #ffffff;
+}
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+}
+
+.btn-icon:hover {
+    background: var(--bg-card);
+}
+
+/* Ana Alan (Channels Sidebar + Voice Grid + Chat) */
+.room-main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ==========================================================================
+   SES ODALARI KANAL LİSTESİ (CHANNELS SIDEBAR)
+   ========================================================================== */
+.channels-sidebar {
+    width: 210px;
+    background: rgba(17, 18, 20, 0.75);
+    backdrop-filter: blur(10px);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    padding: 16px 10px;
+    gap: 10px;
+    overflow-y: auto;
+}
+
+.channels-sidebar-header {
+    padding: 0 8px 4px 8px;
+}
+
+.channels-cat-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+}
+
+.voice-channels-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.channel-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.channel-btn {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+    text-align: left;
+}
+
+.channel-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.channel-btn.active {
+    background: rgba(88, 101, 242, 0.2);
+    color: #ffffff;
+    border-left: 3px solid var(--primary);
+    padding-left: 7px;
+}
+
+.channel-btn .ch-icon {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.channel-btn.active .ch-icon {
+    opacity: 1;
+    color: var(--primary);
+}
+
+.channel-btn .ch-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ch-count-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-muted);
+}
+
+.channel-btn.active .ch-count-badge {
+    background: var(--primary);
+    color: #ffffff;
+}
+
+.channel-users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 26px;
+}
+
+.ch-user-item {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ch-user-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+}
+
+.ch-user-item.speaking .ch-user-dot {
+    box-shadow: 0 0 6px var(--success);
+    transform: scale(1.3);
+}
+
+/* Mobil / Küçük Ekran Hızlı Kanal Strip'i */
+.mobile-channel-strip {
+    display: none;
+    width: 100%;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+    padding: 8px 12px;
+    align-items: center;
+    gap: 10px;
+    overflow-x: auto;
+}
+
+.strip-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.strip-buttons {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+}
+
+.strip-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: var(--transition);
+}
+
+.strip-btn.active {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
+/* Lobi Kanal Seçici */
+.lobby-channel-select {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font);
+    outline: none;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.lobby-channel-select:focus {
+    border-color: var(--primary);
+}
+
+.lobby-channel-select option {
+    background: #1e1f22;
+    color: #ffffff;
+}
+
+/* ==========================================================================
+   SESLİ GRİD ALANI
+   ========================================================================== */
+.voice-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    overflow-y: auto;
+    position: relative;
+}
+
+.voice-grid {
+    display: grid;
+    gap: 20px;
+    width: 100%;
+    max-width: 1200px;
+    height: 100%;
+    max-height: 800px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    align-content: center;
+    justify-content: center;
+}
+
+/* 1-6 kişi için optimize edilmiş akıllı grid */
+.voice-grid[data-count="1"] {
+    grid-template-columns: minmax(320px, 460px);
+}
+.voice-grid[data-count="2"] {
+    grid-template-columns: repeat(2, minmax(280px, 420px));
+}
+.voice-grid[data-count="3"],
+.voice-grid[data-count="4"] {
+    grid-template-columns: repeat(2, minmax(260px, 400px));
+}
+.voice-grid[data-count="5"],
+.voice-grid[data-count="6"] {
+    grid-template-columns: repeat(3, minmax(240px, 340px));
+}
+
+/* KULLANICI KARTI */
+.user-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    aspect-ratio: 4 / 3;
+    transition: var(--transition);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.user-card:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    background: var(--bg-card-hover);
+}
+
+/* AVATAR & KONUŞMA PARLAMASI */
+.avatar-wrapper {
+    position: relative;
+    margin-top: auto;
+    margin-bottom: auto;
+}
+
+.user-avatar {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    font-weight: 800;
+    color: #ffffff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    position: relative;
+    z-index: 2;
+    transition: var(--transition);
+}
+
+/* Konuşma Hareketi (Pulse) */
+.avatar-ring {
+    position: absolute;
+    top: -6px;
+    left: -6px;
+    right: -6px;
+    bottom: -6px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    pointer-events: none;
+    z-index: 1;
+    transition: var(--transition);
+}
+
+.user-card.speaking .avatar-ring {
+    border-color: var(--success);
+    box-shadow: 0 0 20px rgba(35, 165, 90, 0.6), inset 0 0 10px rgba(35, 165, 90, 0.4);
+    animation: speakPulse 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes speakPulse {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.08); opacity: 1; }
+}
+
+/* Durum Rozetleri */
+.card-badges {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    gap: 6px;
+}
+
+.card-badge-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    backdrop-filter: blur(4px);
+}
+
+.card-badge-icon.muted {
+    background: var(--danger);
+    color: #ffffff;
+}
+
+.card-badge-icon.deafened {
+    background: var(--warning);
+    color: #111214;
+}
+
+/* Alt İsim ve Bireysel Ses Ayarı */
+.card-footer {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-username {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tag-you {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--primary);
+    background: rgba(88, 101, 242, 0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* Bireysel Ses Kaydırıcısı (Her arkadaşa özel!) */
+.peer-volume-control {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+}
+
+.peer-volume-icon {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.peer-volume-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--bg-input);
+    outline: none;
+}
+
+.peer-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.peer-volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.3);
+}
+
+.peer-volume-val {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 32px;
+    text-align: right;
+}
+
+/* ==========================================================================
+   YAZILI SOHBET ALANI (CHAT)
+   ========================================================================== */
+.chat-section {
+    width: 340px;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: var(--transition);
+}
+
+.chat-header {
+    height: 52px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.chat-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chat-title h3 {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.chat-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.chat-messages {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.chat-empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: auto 0;
+}
+
+/* Mesaj Balonları */
+.chat-msg {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-msg-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+    flex-shrink: 0;
+}
+
+.chat-msg-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.chat-msg-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chat-msg-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.chat-msg-time {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.chat-msg-body {
+    font-size: 13px;
+    color: var(--text-primary);
+    word-break: break-word;
+    background: var(--bg-card);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    width: fit-content;
+    max-width: 100%;
+}
+
+.chat-msg-system {
+    align-self: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+}
+
+.chat-input-bar {
+    padding: 12px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+#chat-input {
+    flex: 1;
+    background: var(--bg-input);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+    font-family: var(--font);
+    outline: none;
+}
+
+.btn-send {
+    background: var(--primary);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-sm);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-send:hover {
+    background: var(--primary-hover);
+}
+
+/* ==========================================================================
+   ALT KONTROL DOCK (DOCK PANEL)
+   ========================================================================= */
+.room-control-dock {
+    height: 72px;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+}
+
+.dock-user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 220px;
+}
+
+.dock-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.dock-meta {
+    display: flex;
+    flex-direction: column;
+}
+
+.dock-username {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.dock-status {
+    font-size: 11px;
+    color: var(--success);
+}
+
+.dock-center-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.dock-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    position: relative;
+}
+
+.dock-btn:hover {
+    background: var(--bg-card-hover);
+}
+
+.dock-btn.active-danger {
+    background: rgba(242, 63, 67, 0.2);
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.dock-btn-icon {
+    font-size: 18px;
+}
+
+.kbd-hint {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+
+.dock-toggle-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dock-btn-small {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.dock-btn-small:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.dock-btn-small.ptt-active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(88, 101, 242, 0.15);
+}
+
+.ptt-badge {
+    background: rgba(88, 101, 242, 0.2);
+    border: 1px dashed var(--primary);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.dock-right-actions {
+    width: 220px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.dock-btn-icon-only {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.dock-btn-icon-only.active {
+    background: rgba(88, 101, 242, 0.2);
+    border-color: var(--primary);
+}
+
+/* ==========================================================================
+   MODAL (AYARLAR)
+   ========================================================================== */
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modal-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    width: 100%;
+    max-width: 480px;
+    padding: 24px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.modal-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.btn-close {
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.form-range {
+    flex: 1;
+}
+
+.ptt-key-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.key-tag {
+    background: var(--bg-input);
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 700;
+    border: 1px solid var(--border-color);
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+    .chat-section {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+        z-index: 50;
+    }
+    .room-control-dock {
+        padding: 0 12px;
+    }
+    .dock-user-info, .dock-right-actions {
+        width: auto;
+    }
+}
+
+/* ==========================================================================
+   TÜNEL & PAYLAŞIM ARAYÜZ STILLERI
+   ========================================================================== */
+.tunnel-box {
+    background: rgba(88, 101, 242, 0.08);
+    border: 1px solid rgba(88, 101, 242, 0.25);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tunnel-box-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.tunnel-tip {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.btn-tunnel {
+    background: linear-gradient(135deg, #5865f2, #7289da);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: var(--font);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    transition: var(--transition);
+}
+
+.btn-tunnel:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+.tunnel-active-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.tunnel-input,
+.form-input-text {
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-size: 12px;
+    font-family: monospace;
+    outline: none;
+}
+
+.btn-danger-sm {
+    background: rgba(242, 63, 67, 0.2);
+    color: var(--danger);
+    border: 1px solid rgba(242, 63, 67, 0.4);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-danger-sm:hover {
+    background: var(--danger);
+    color: #ffffff;
+}
+
+.invite-section-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.invite-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.invite-sub {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.input-with-btn {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.tunnel-actions-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.btn-link-danger {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.btn-link-danger:hover {
+    color: #ff787b;
+}
+
+/* Spinner Animasyonu */
+.spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    display: inline-block;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Otomatik Oynatma Uyarısı (Tarayıcı sesi kilitlerse) */
+.autoplay-alert {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #f23f43, #eb459e);
+    color: #ffffff;
+    padding: 12px 24px;
+    border-radius: var(--radius-full);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    z-index: 1000;
+    box-shadow: 0 8px 24px rgba(242, 63, 67, 0.5);
+    animation: bounceAlert 1s infinite alternate ease-in-out;
+}
+
+@keyframes bounceAlert {
+    0% { transform: translateX(-50%) translateY(0); }
+    100% { transform: translateX(-50%) translateY(-6px); }
+}
+
+/* ==========================================================================
+   MODERN SOHBET SEKMELERİ (TABS & DMS)
+   ========================================================================== */
+.chat-tabs-bar {
+    height: 44px;
+    background: rgba(0, 0, 0, 0.25);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.chat-tabs-bar::-webkit-scrollbar {
+    display: none;
+}
+
+.chat-tab {
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+    position: relative;
+}
+
+.chat-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.chat-tab.active {
+    background: var(--bg-card);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.tab-icon {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-muted);
+}
+
+.chat-tab.active .tab-icon {
+    color: var(--primary);
+}
+
+.tab-unread-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--danger);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--danger);
+    animation: speakPulse 1s infinite alternate;
+}
+
+.btn-tab-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: var(--transition);
+}
+
+.btn-tab-close:hover {
+    background: rgba(242, 63, 67, 0.2);
+    color: var(--danger);
+}
+
+.tab-avatar-mini {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #ffffff;
+    flex-shrink: 0;
+}
+
+.chat-dm-tag {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(88, 101, 242, 0.25);
+    color: #8da2fb;
+    border: 1px solid rgba(88, 101, 242, 0.4);
+    letter-spacing: 0.5px;
+}
+
+.chat-msg-private {
+    border-left: 2px solid var(--primary);
+    padding-left: 6px;
+}
+
+/* ==========================================================================
+   GÖRSEL PAYLAŞIMI VE ÖNİZLEME (IMAGE ATTACHMENTS)
+   ========================================================================== */
+.btn-attach {
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+}
+
+.btn-attach:hover {
+    background: var(--bg-card);
+    transform: scale(1.1);
+}
+
+.image-staging-box {
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-color);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.staging-preview {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--primary);
+}
+
+.staging-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.btn-cancel-img {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #ffffff;
+    border: none;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    font-size: 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.staging-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* Mesaj İçi Görsel */
+.chat-msg-img-container {
+    margin-top: 6px;
+    max-width: 260px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    cursor: zoom-in;
+    transition: var(--transition);
+    background: #000000;
+}
+
+.chat-msg-img-container:hover {
+    border-color: var(--primary);
+    transform: scale(1.02);
+}
+
+.chat-msg-img {
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    display: block;
+}
+
+/* Kart Üzerinde Hızlı DM Butonu */
+.card-dm-action {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+}
+
+.btn-card-dm {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: var(--radius-full);
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    backdrop-filter: blur(4px);
+    transition: var(--transition);
+}
+
+.btn-card-dm:hover {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
+/* ==========================================================================
+   LIGHTBOX MODAL (TAM BOY GÖRSEL İNCELEME)
+   ========================================================================== */
+.lightbox-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.88);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.lightbox-card {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.lightbox-img-wrapper {
+    max-width: 100%;
+    max-height: 80vh;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lightbox-img-wrapper img {
+    max-width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+    display: block;
+}
+
+.btn-close-lightbox {
+    position: absolute;
+    top: -40px;
+    right: 0;
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.btn-close-lightbox:hover {
+    background: var(--danger);
+}
+
+.lightbox-footer {
+    display: flex;
+    gap: 10px;
+}
