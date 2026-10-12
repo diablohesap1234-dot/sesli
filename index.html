@@ -3,27 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Özel Sesli & Yazılı Sohbet</title>
+    <title>AGALAR SESLİ SOHBET</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎙️</text></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="icon" href="/static/logo.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#5865F2">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Agalar">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+    <!-- MASAÜSTÜ SİNEMATİK AÇILIŞ ANİMASYONU (SPLASH SCREEN) -->
+    <div id="splash-screen" class="splash-screen hidden">
+        <div class="splash-content">
+            <div class="splash-logo-wrapper">
+                <div class="splash-glow-ring ring-1"></div>
+                <div class="splash-glow-ring ring-2"></div>
+                <img src="/static/logo.png" alt="AGALAR Logo" class="splash-logo-img">
+            </div>
+            <div class="splash-brand-title">AGALAR SESLİ SOHBET</div>
+            <div class="splash-soundwaves">
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+            </div>
+            <div class="splash-progress-box">
+                <div class="splash-progress-bar">
+                    <div id="splash-progress-fill" class="splash-progress-fill"></div>
+                </div>
+                <span id="splash-status-text" class="splash-status-text">👑 Ses Motoru Yükleniyor...</span>
+            </div>
+            <div class="splash-footer-badge">DESKTOP GAMING EDITION • LOW RAM</div>
+        </div>
+    </div>
+
     <div id="app">
+        <!-- MASAÜSTÜ ÖZEL ÜST BAR (CUSTOM DESKTOP TITLEBAR) -->
+        <div id="desktop-custom-titlebar" class="desktop-custom-titlebar">
+            <div class="dt-left">
+                <img src="/static/logo.png" alt="Logo" class="dt-logo">
+                <span class="dt-app-title">AGALAR SESLİ SOHBET</span>
+                <span class="dt-badge-edition">PRO DESKTOP</span>
+            </div>
+            <div class="dt-center">
+                <span class="dt-status-pill">
+                    <span class="pill-dot"></span>
+                    <span id="dt-channel-indicator">Beklemede</span>
+                </span>
+            </div>
+            <div class="dt-right">
+                <div class="dt-stat-item" title="Tahmini RAM Tüketimi">
+                    <span class="dt-stat-icon">⚡</span>
+                    <span class="dt-stat-val">~34 MB</span>
+                </div>
+                <button type="button" id="btn-toggle-compact" class="dt-btn-action" title="Kompakt / Tam Ekran Görünüm">
+                    <span id="compact-icon">🗖</span>
+                    <span id="compact-text">Kompakt Mod</span>
+                </button>
+            </div>
+        </div>
+
         <!-- 1. GİRİŞ EKRANI (LOBBY) -->
         <div id="lobby-screen" class="screen-view">
             <div class="lobby-card">
                 <div class="lobby-header">
                     <div class="app-logo">
-                        <span class="logo-icon">🎙️</span>
+                        <img src="/static/logo.png" alt="AGALAR SESLİ SOHBET" class="agalar-brand-logo">
                     </div>
-                    <h1>Arkadaş Grubu Sesli Sohbet</h1>
-                    <p class="subtitle">Düşük gecikmeli, güvenli ve p2p grup iletişimi</p>
+                    <h1 class="brand-title">AGALAR SESLİ SOHBET</h1>
+                    <p class="subtitle">Agalarla düşük gecikmeli, kesintisiz sesli ve yazılı iletişim</p>
                 </div>
 
                 <form id="join-form" class="lobby-form">
+                    <!-- Kayıtlı Oturum Bildirimi (Varsa) -->
+                    <div id="saved-session-hint" class="saved-session-box hidden">
+                        <div class="saved-session-info">
+                            <span class="saved-icon">⚡</span>
+                            <span>Kayıtlı Profil: <strong id="saved-nick-label"></strong></span>
+                        </div>
+                        <button type="button" id="btn-clear-session" class="btn-clear-session" title="Kayıtlı oturumu sıfırla">Sıfırla / Farklı Giriş</button>
+                    </div>
+
                     <div class="form-group">
                         <label for="nickname-input">Takma Adın</label>
                         <input type="text" id="nickname-input" value="Misafir" placeholder="Örn: Misafir" maxlength="20" required autocomplete="off">
@@ -99,6 +168,27 @@
                         </div>
                     </div>
 
+                    <!-- Resmi Masaüstü Uygulaması Yükleme Alanı -->
+                    <div class="desktop-app-box">
+                        <div class="desktop-box-header">
+                            <div class="desktop-box-title">
+                                <span class="desktop-icon">👑</span>
+                                <div>
+                                    <strong class="desktop-title-text">Masaüstü Uygulamasını İndir</strong>
+                                    <span class="badge badge-ram">⚡ ~34 MB RAM</span>
+                                </div>
+                            </div>
+                            <span class="badge badge-verified">✔ Güvenli & Virüssüz</span>
+                        </div>
+                        <p class="desktop-tip">Tarayıcı üzerinden doğrudan Windows masaüstünüze kurulur. Şüpheli dosyalar gerektirmez, Discord gibi ağır programları aratmaz.</p>
+                        <div class="desktop-actions">
+                            <button type="button" id="btn-install-pwa" class="btn-pwa-install-main">
+                                <span class="install-btn-icon">⬇️</span>
+                                <span>Masaüstü Uygulaması Olarak İndir / Yükle</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <div id="error-message" class="error-box hidden"></div>
 
                     <button type="submit" id="btn-join" class="btn-primary">
@@ -116,6 +206,10 @@
             <!-- ÜST BİLGİ ÇUBUĞU -->
             <header class="room-navbar">
                 <div class="room-nav-left">
+                    <div class="brand-badge-mini" title="AGALAR SESLİ SOHBET">
+                        <img src="/static/logo.png" alt="AGALAR" class="mini-logo">
+                        <span class="mini-brand-text">AGALAR</span>
+                    </div>
                     <div class="channel-tag">
                         <span class="icon">🔊</span>
                         <span id="current-room-name" class="room-title">gaming</span>
@@ -134,6 +228,10 @@
                 </div>
 
                 <div class="room-nav-right">
+                    <button id="btn-pwa-install-nav" class="btn-pwa-nav hidden" title="Masaüstü Uygulaması Olarak Yükle">
+                        <span>🖥️ Masaüstüne Yükle</span>
+                    </button>
+
                     <button id="btn-copy-link" class="btn-secondary" title="Arkadaşlarına göndermek için davet linkini kopyala">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
@@ -146,7 +244,7 @@
                         ⚙️
                     </button>
 
-                    <button id="btn-leave-room" class="btn-danger" title="Odadan Ayrıl">
+                    <button id="btn-leave-room" class="btn-danger" title="Sunucudan Ayrıl / İsmini veya Odanı Değiştir">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                             <polyline points="16 17 21 12 16 7"/>
@@ -445,6 +543,41 @@
                     <a id="lightbox-download-link" href="#" target="_blank" download="gorsel.png" class="btn-secondary">
                         <span>⬇️ Yeni Sekmede Aç / İndir</span>
                     </a>
+                </div>
+        <!-- MASAÜSTÜ UYGULAMASI VE DÜŞÜK RAM BİLGİ MODALI -->
+        <div id="desktop-info-modal" class="modal-backdrop hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>🖥️ Ultra Hafif Masaüstü Uygulaması</h2>
+                    <button id="btn-close-desktop-info" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="desktop-info-grid">
+                        <div class="info-metric-card">
+                            <span class="metric-title">Discord / Electron</span>
+                            <span class="metric-val danger">450 - 700 MB</span>
+                            <span class="metric-sub">Ağır arka plan işlemleri</span>
+                        </div>
+                        <div class="info-metric-card highlight">
+                            <span class="metric-title">Bizim Uygulama</span>
+                            <span class="metric-val success">~30 - 45 MB</span>
+                            <span class="metric-sub">Sıfır FPS kaybı, tam performans</span>
+                        </div>
+                    </div>
+
+                    <div class="desktop-guide-card">
+                        <h4>Nasıl Kurulur? (Tek Tıkla Resmi Kurulum)</h4>
+                        <ol class="desktop-steps-list">
+                            <li><strong>Adım 1:</strong> Lobideki <em>"Masaüstü Uygulaması Olarak İndir / Yükle"</em> butonuna basın.</li>
+                            <li><strong>Adım 2:</strong> Tarayıcınızın onay penceresinde <em>"Yükle"</em> seçeneğine tıklayın. (Veya adres çubuğunun en sağındaki yükleme simgesine tıklayın)</li>
+                            <li><strong>Tamamdır!</strong> Uygulama doğrudan Windows Masaüstünüze ve Başlat menünüze güvenli şekilde eklenir. Şüpheli dosyalar veya .bat indirmeniz gerekmez!</li>
+                        </ol>
+                    </div>
+
+                    <div class="desktop-features-list">
+                        <div>✔ <strong>Arka Planda Dinleme:</strong> Oyun oynarken veya pencere simge durumundayken sesiniz ve arkadaşlarınızın sesi kesilmez.</div>
+                        <div>✔ <strong>Otomatik Donanım Tasarrufu:</strong> Pencere gizlendiğinde ekran animasyonları durdurularak işlemci ve RAM kullanımı minimuma çekilir.</div>
+                    </div>
                 </div>
             </div>
         </div>

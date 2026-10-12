@@ -7,17 +7,18 @@ import asyncio
 import sqlite3
 import uuid
 import aiofiles
+import os
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("voice-chat")
 
-app = FastAPI(title="Özel Sesli & Yazılı Sohbet", version="2.0.0")
+app = FastAPI(title="AGALAR SESLİ SOHBET", version="2.0.0")
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -29,7 +30,7 @@ DB_PATH = BASE_DIR / "chat.db"
 # Otomatik dosya senkronizasyonu:
 # Eğer index.html, style.css, app.js ana dizinde yer alıyorsa static içine senkronize et
 import shutil
-for _fname in ["index.html", "style.css", "app.js"]:
+for _fname in ["index.html", "style.css", "app.js", "manifest.json", "sw.js", "icon-192.png", "icon-512.png", "icon.svg", "logo.png", "logo.jpg", "favicon.ico"]:
     _root_f = BASE_DIR / _fname
     _static_f = STATIC_DIR / _fname
     if _root_f.exists() and not _static_f.exists():
@@ -38,6 +39,11 @@ for _fname in ["index.html", "style.css", "app.js"]:
             logger.info(f"Root static file {_fname} -> static/{_fname} kopyalandı.")
         except Exception as _e:
             logger.warning(f"Dosya kopyalama hatası ({_fname}): {_e}")
+    elif _static_f.exists() and not _root_f.exists():
+        try:
+            shutil.copy(_static_f, _root_f)
+        except Exception:
+            pass
 
 
 class DatabaseManager:
@@ -342,7 +348,78 @@ async def get_root_app():
 
 @app.get("/favicon.ico")
 async def get_favicon():
+    icon_p = STATIC_DIR / "icon-192.png" if (STATIC_DIR / "icon-192.png").exists() else BASE_DIR / "icon-192.png"
+    if icon_p.exists():
+        return FileResponse(icon_p, media_type="image/png")
     return Response(status_code=204)
+
+
+@app.get("/manifest.json")
+async def get_manifest():
+    p = STATIC_DIR / "manifest.json" if (STATIC_DIR / "manifest.json").exists() else BASE_DIR / "manifest.json"
+    if p.exists():
+        return FileResponse(p, media_type="application/manifest+json")
+    raise HTTPException(status_code=404, detail="manifest.json bulunamadı")
+
+
+@app.get("/sw.js")
+async def get_sw():
+    p = STATIC_DIR / "sw.js" if (STATIC_DIR / "sw.js").exists() else BASE_DIR / "sw.js"
+    if p.exists():
+        return FileResponse(p, media_type="application/javascript", headers={"Service-Worker-Allowed": "/"})
+    raise HTTPException(status_code=404, detail="sw.js bulunamadı")
+
+
+@app.get("/icon-192.png")
+async def get_icon_192():
+    p = STATIC_DIR / "icon-192.png" if (STATIC_DIR / "icon-192.png").exists() else BASE_DIR / "icon-192.png"
+    if p.exists():
+        return FileResponse(p, media_type="image/png")
+    raise HTTPException(status_code=404, detail="icon-192.png bulunamadı")
+
+
+@app.get("/icon-512.png")
+async def get_icon_512():
+    p = STATIC_DIR / "icon-512.png" if (STATIC_DIR / "icon-512.png").exists() else BASE_DIR / "icon-512.png"
+    if p.exists():
+        return FileResponse(p, media_type="image/png")
+    raise HTTPException(status_code=404, detail="icon-512.png bulunamadı")
+
+
+@app.get("/api/download-launcher")
+async def download_launcher(url: Optional[str] = None):
+    """Generates and serves a lightweight Windows .bat desktop launcher"""
+    target_url = url if url and url.startswith("http") else "https://sesli2.onrender.com/"
+    if "mode=desktop" not in target_url:
+        sep = "&" if "?" in target_url else "?"
+        target_url = f"{target_url}{sep}mode=desktop"
+    bat_content = f"""@echo off
+chcp 65001 >nul
+title AGALAR SESLI SOHBET (Masaustu Ozel Surum)
+echo =======================================================
+echo   👑 AGALAR SESLI SOHBET Baslatiliyor...
+echo   Masaustu Ozel Surum & Dusuk RAM Modu (~35MB)
+echo =======================================================
+
+:: 1. Microsoft Edge App Modu (Windows Yerel - En dusuk RAM)
+start "" msedge.exe --app="{target_url}" 2>nul
+if %errorlevel% equ 0 exit
+
+:: 2. Google Chrome App Modu (Alternatif)
+start "" chrome.exe --app="{target_url}" 2>nul
+if %errorlevel% equ 0 exit
+
+:: 3. Varsayilan Tarayici
+start "" "{target_url}"
+exit
+"""
+    return Response(
+        content=bat_content.encode("utf-8"),
+        media_type="application/x-bat",
+        headers={
+            "Content-Disposition": "attachment; filename=AGALAR-Sesli-Sohbet.bat"
+        }
+    )
 
 
 @app.get("/api/room-check/{room_id}")

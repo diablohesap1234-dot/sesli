@@ -1764,3 +1764,705 @@ input[type="password"]:focus,
     display: flex;
     gap: 10px;
 }
+
+/* ==========================================================================
+   MASAÜSTÜ UYGULAMASI VE DÜŞÜK RAM MODU STİLLERİ
+   ========================================================================== */
+.desktop-app-box {
+    margin-top: 14px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, rgba(88, 101, 242, 0.08) 0%, rgba(35, 165, 90, 0.08) 100%);
+    border: 1px solid rgba(88, 101, 242, 0.25);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: var(--transition);
+}
+
+.desktop-app-box:hover {
+    border-color: rgba(88, 101, 242, 0.45);
+    background: linear-gradient(135deg, rgba(88, 101, 242, 0.12) 0%, rgba(35, 165, 90, 0.12) 100%);
+}
+
+.desktop-box-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.desktop-box-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.desktop-icon {
+    font-size: 20px;
+}
+
+.desktop-title-text {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-right: 6px;
+}
+
+.badge-ram {
+    background: rgba(35, 165, 90, 0.2) !important;
+    color: #23A55A !important;
+    border: 1px solid rgba(35, 165, 90, 0.35);
+    font-weight: 700;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 12px;
+}
+
+.btn-info-circle {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-info-circle:hover {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.desktop-tip {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0;
+}
+
+.desktop-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.badge-verified {
+    background: rgba(35, 165, 90, 0.15) !important;
+    color: #23A55A !important;
+    border: 1px solid rgba(35, 165, 90, 0.35);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 12px;
+    letter-spacing: 0.3px;
+}
+
+.btn-pwa-install-main {
+    width: 100%;
+    background: linear-gradient(135deg, #5865F2 0%, #3B46B9 100%);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 12px 18px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-shadow: 0 4px 18px rgba(88, 101, 242, 0.45);
+    transition: var(--transition);
+}
+
+.btn-pwa-install-main:hover {
+    background: linear-gradient(135deg, #6B77F7 0%, #4752C4 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(88, 101, 242, 0.65);
+}
+
+.install-btn-icon {
+    font-size: 16px;
+}
+
+/* Room Navbar PWA Button */
+.btn-pwa-nav {
+    background: rgba(88, 101, 242, 0.18);
+    border: 1px solid rgba(88, 101, 242, 0.4);
+    color: var(--primary-light, #8591f8);
+    border-radius: var(--radius-sm);
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: var(--transition);
+}
+
+.btn-pwa-nav:hover {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+/* Desktop Info Modal Styles */
+.desktop-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.info-metric-card {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+}
+
+.info-metric-card.highlight {
+    background: rgba(35, 165, 90, 0.1);
+    border-color: rgba(35, 165, 90, 0.35);
+}
+
+.metric-title {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.metric-val {
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.metric-val.danger {
+    color: #f23f43;
+}
+
+.metric-val.success {
+    color: #23a55a;
+}
+
+.metric-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.desktop-guide-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    margin-bottom: 14px;
+}
+
+.desktop-guide-card h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.desktop-steps-list {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+.desktop-features-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: rgba(88, 101, 242, 0.06);
+    border: 1px solid rgba(88, 101, 242, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+}
+
+/* ==========================================================================
+   AGALAR SESLİ SOHBET LOGO & MARKA STİLLERİ
+   ========================================================================== */
+.agalar-brand-logo {
+    width: 96px;
+    height: 96px;
+    border-radius: 22px;
+    object-fit: cover;
+    box-shadow: 0 8px 30px rgba(88, 101, 242, 0.45), 0 0 20px rgba(0, 176, 244, 0.35);
+    border: 2px solid rgba(88, 101, 242, 0.55);
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease;
+}
+
+.agalar-brand-logo:hover {
+    transform: scale(1.08) rotate(-3deg);
+    box-shadow: 0 14px 40px rgba(88, 101, 242, 0.7), 0 0 30px rgba(0, 176, 244, 0.6);
+}
+
+.brand-title {
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    background: linear-gradient(135deg, #FFFFFF 15%, #9BA7FF 55%, #00B0F4 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 10px 0 4px 0;
+    text-transform: uppercase;
+    text-shadow: 0 2px 16px rgba(88, 101, 242, 0.3);
+}
+
+.brand-badge-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(88, 101, 242, 0.15);
+    border: 1px solid rgba(88, 101, 242, 0.3);
+    padding: 4px 10px 4px 5px;
+    border-radius: 8px;
+    margin-right: 8px;
+}
+
+.mini-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.mini-brand-text {
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    background: linear-gradient(135deg, #FFFFFF 20%, #8591f8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ==========================================================================
+   MASAÜSTÜ AÇILIŞ ANİMASYONU (CINEMATIC SPLASH SCREEN)
+   ========================================================================== */
+.splash-screen {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, #131838 0%, #080a12 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999999;
+    user-select: none;
+    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), filter 0.6s ease;
+}
+
+.splash-screen.fade-out {
+    opacity: 0;
+    transform: scale(1.08);
+    filter: blur(10px);
+    pointer-events: none;
+}
+
+.splash-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    max-width: 440px;
+    padding: 24px;
+    position: relative;
+}
+
+.splash-logo-wrapper {
+    position: relative;
+    width: 140px;
+    height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.splash-glow-ring {
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+    border: 2px dashed rgba(88, 101, 242, 0.4);
+    animation: ringRotate 10s linear infinite;
+}
+
+.splash-glow-ring.ring-2 {
+    inset: -24px;
+    border: 1px solid rgba(0, 176, 244, 0.25);
+    border-top-color: #00B0F4;
+    animation: ringRotateReverse 6s linear infinite;
+}
+
+@keyframes ringRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes ringRotateReverse {
+    from { transform: rotate(360deg); }
+    to { transform: rotate(0deg); }
+}
+
+.splash-logo-img {
+    width: 110px;
+    height: 110px;
+    border-radius: 26px;
+    object-fit: cover;
+    box-shadow: 0 0 50px rgba(88, 101, 242, 0.7), 0 0 30px rgba(0, 176, 244, 0.5);
+    border: 3px solid rgba(88, 101, 242, 0.8);
+    animation: logoGlowPulse 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes logoGlowPulse {
+    0% {
+        transform: scale(0.98);
+        box-shadow: 0 0 35px rgba(88, 101, 242, 0.5), 0 0 20px rgba(0, 176, 244, 0.4);
+    }
+    100% {
+        transform: scale(1.04);
+        box-shadow: 0 0 65px rgba(88, 101, 242, 0.85), 0 0 45px rgba(0, 176, 244, 0.7);
+    }
+}
+
+.splash-brand-title {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    background: linear-gradient(135deg, #FFFFFF 10%, #9BA7FF 50%, #00B0F4 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    text-shadow: 0 4px 20px rgba(88, 101, 242, 0.4);
+}
+
+.splash-soundwaves {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    margin-bottom: 22px;
+}
+
+.wave-bar {
+    width: 4px;
+    height: 8px;
+    background: linear-gradient(180deg, #00B0F4 0%, #5865F2 100%);
+    border-radius: 4px;
+    animation: waveBounce 0.8s ease-in-out infinite alternate;
+}
+
+.wave-bar:nth-child(1) { animation-delay: 0.1s; }
+.wave-bar:nth-child(2) { animation-delay: 0.3s; }
+.wave-bar:nth-child(3) { animation-delay: 0.5s; }
+.wave-bar:nth-child(4) { animation-delay: 0.2s; }
+.wave-bar:nth-child(5) { animation-delay: 0.4s; }
+.wave-bar:nth-child(6) { animation-delay: 0.6s; }
+.wave-bar:nth-child(7) { animation-delay: 0.25s; }
+
+@keyframes waveBounce {
+    0% { height: 6px; opacity: 0.4; }
+    100% { height: 26px; opacity: 1; }
+}
+
+.splash-progress-box {
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.splash-progress-bar {
+    width: 100%;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.splash-progress-fill {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #5865F2, #00B0F4);
+    box-shadow: 0 0 12px #00B0F4;
+    border-radius: 10px;
+    transition: width 0.4s ease-out;
+}
+
+.splash-status-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+
+.splash-footer-badge {
+    margin-top: 24px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.35);
+    font-weight: 700;
+}
+
+/* ==========================================================================
+   MASAÜSTÜNE ÖZEL ARAYÜZ (DESKTOP MODE) VE KOMPAKT GÖRÜNÜM
+   ========================================================================== */
+
+/* Web modunda özel titlebar gizlidir */
+.desktop-custom-titlebar {
+    display: none;
+}
+
+/* Masaüstü modunda özel titlebar görünür */
+body.desktop-mode .desktop-custom-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 38px;
+    background: rgba(10, 14, 26, 0.96);
+    border-bottom: 1px solid rgba(88, 101, 242, 0.25);
+    padding: 0 14px;
+    font-size: 12px;
+    user-select: none;
+    z-index: 100;
+    backdrop-filter: blur(16px);
+}
+
+.dt-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dt-logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    object-fit: cover;
+}
+
+.dt-app-title {
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    color: #ffffff;
+    font-size: 12px;
+}
+
+.dt-badge-edition {
+    background: rgba(88, 101, 242, 0.25);
+    color: #8591f8;
+    border: 1px solid rgba(88, 101, 242, 0.4);
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+
+.dt-center {
+    display: flex;
+    align-items: center;
+}
+
+.dt-status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.dt-status-pill .pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #23A55A;
+    box-shadow: 0 0 6px #23A55A;
+}
+
+.dt-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.dt-stat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #23A55A;
+    background: rgba(35, 165, 90, 0.12);
+    border: 1px solid rgba(35, 165, 90, 0.25);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 700;
+}
+
+.dt-btn-action {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: var(--transition);
+}
+
+.dt-btn-action:hover {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
+/* Masaüstü Modunda Arayüz İyileştirmeleri */
+body.desktop-mode {
+    background: #080b14;
+}
+
+body.desktop-mode #app {
+    height: calc(100vh - 38px);
+}
+
+body.desktop-mode .room-navbar {
+    background: rgba(15, 20, 36, 0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(88, 101, 242, 0.2);
+}
+
+body.desktop-mode .channels-sidebar {
+    background: rgba(12, 16, 29, 0.85);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(88, 101, 242, 0.15);
+}
+
+body.desktop-mode .channel-btn:hover {
+    background: rgba(88, 101, 242, 0.18);
+    transform: translateX(2px);
+}
+
+body.desktop-mode .user-card {
+    background: rgba(18, 24, 44, 0.7);
+    border: 1px solid rgba(88, 101, 242, 0.2);
+    backdrop-filter: blur(12px);
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+body.desktop-mode .user-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(88, 101, 242, 0.3);
+}
+
+body.desktop-mode .user-card.speaking {
+    border-color: #23A55A;
+    box-shadow: 0 0 25px rgba(35, 165, 90, 0.5), inset 0 0 15px rgba(35, 165, 90, 0.15);
+}
+
+/* Masaüstü Kompakt Modu (Oyun Oynarken İkinci Ekran / Mini Pencere) */
+body.desktop-mode.compact-mode .chat-sidebar {
+    display: none !important;
+}
+
+body.desktop-mode.compact-mode .channels-sidebar {
+    width: 170px !important;
+    min-width: 170px !important;
+}
+
+body.desktop-mode.compact-mode .users-grid {
+    gap: 8px !important;
+    padding: 8px !important;
+}
+
+body.desktop-mode.compact-mode .user-card {
+    min-width: 110px !important;
+    padding: 10px !important;
+}
+
+body.desktop-mode.compact-mode .user-avatar {
+    width: 48px !important;
+    height: 48px !important;
+    font-size: 20px !important;
+}
+
+/* Kayıtlı Oturum Bilgi Kutusu */
+.saved-session-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(88, 101, 242, 0.12);
+    border: 1px solid rgba(88, 101, 242, 0.3);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.saved-session-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.saved-icon {
+    font-size: 16px;
+}
+
+.btn-clear-session {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-clear-session:hover {
+    background: var(--danger);
+    color: white;
+    border-color: var(--danger);
+}
+
+
+

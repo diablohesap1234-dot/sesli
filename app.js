@@ -52,7 +52,8 @@ const state = {
         'channel-4': 'Ses Odası 4',
         'channel-5': 'Ses Odası 5'
     },
-    allUsers: {} // client_id -> { nickname, avatar_color, voice_channel, is_muted, is_deafened, is_speaking }
+    allUsers: {}, // client_id -> { nickname, avatar_color, voice_channel, is_muted, is_deafened, is_speaking }
+    deferredPrompt: null
 };
 
 // WebRTC STUN Configuration
@@ -82,6 +83,9 @@ const el = {
     micStatusBadge: document.getElementById('mic-status-badge'),
     micMeterFill: document.getElementById('mic-meter-fill'),
     errorMessage: document.getElementById('error-message'),
+    savedSessionHint: document.getElementById('saved-session-hint'),
+    savedNickLabel: document.getElementById('saved-nick-label'),
+    btnClearSession: document.getElementById('btn-clear-session'),
 
     // Ses Odaları Kanalları
     channelsSidebar: document.getElementById('channels-sidebar'),
@@ -174,7 +178,25 @@ const el = {
     lightboxModal: document.getElementById('lightbox-modal'),
     lightboxImg: document.getElementById('lightbox-img'),
     btnCloseLightbox: document.getElementById('btn-close-lightbox'),
-    lightboxDownloadLink: document.getElementById('lightbox-download-link')
+    lightboxDownloadLink: document.getElementById('lightbox-download-link'),
+
+    // Masaüstü PWA ve Başlatıcı
+    btnInstallPwa: document.getElementById('btn-install-pwa'),
+    btnPwaInstallNav: document.getElementById('btn-pwa-install-nav'),
+    btnDownloadBat: document.getElementById('btn-download-bat'),
+    btnInfoDesktop: document.getElementById('btn-info-desktop'),
+    desktopInfoModal: document.getElementById('desktop-info-modal'),
+    btnCloseDesktopInfo: document.getElementById('btn-close-desktop-info'),
+
+    // Masaüstü Özel Arayüz ve Splash Screen
+    splashScreen: document.getElementById('splash-screen'),
+    splashProgressFill: document.getElementById('splash-progress-fill'),
+    splashStatusText: document.getElementById('splash-status-text'),
+    desktopCustomTitlebar: document.getElementById('desktop-custom-titlebar'),
+    btnToggleCompact: document.getElementById('btn-toggle-compact'),
+    compactIcon: document.getElementById('compact-icon'),
+    compactText: document.getElementById('compact-text'),
+    dtChannelIndicator: document.getElementById('dt-channel-indicator')
 };
 
 // ============================================================================
@@ -184,6 +206,47 @@ class SoundEffects {
     static init() {
         if (!state.audioCtx) {
             state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    static playStartupChime() {
+        this.init();
+        if (!state.audioCtx) return;
+        try {
+            if (state.audioCtx.state === 'suspended') {
+                state.audioCtx.resume();
+            }
+            const now = state.audioCtx.currentTime;
+            // Warm bass pad
+            const oscBass = state.audioCtx.createOscillator();
+            const gainBass = state.audioCtx.createGain();
+            oscBass.type = 'triangle';
+            oscBass.frequency.setValueAtTime(130.81, now);
+            gainBass.gain.setValueAtTime(0.001, now);
+            gainBass.gain.exponentialRampToValueAtTime(0.12, now + 0.2);
+            gainBass.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
+            oscBass.connect(gainBass);
+            gainBass.connect(state.audioCtx.destination);
+            oscBass.start(now);
+            oscBass.stop(now + 1.4);
+
+            // Ascending triad chord
+            const freqs = [261.63, 329.63, 392.00, 523.25];
+            freqs.forEach((f, i) => {
+                const osc = state.audioCtx.createOscillator();
+                const gain = state.audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(f, now + 0.15 + i * 0.08);
+                gain.gain.setValueAtTime(0.001, now + 0.15 + i * 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.08, now + 0.25 + i * 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2 + i * 0.08);
+                osc.connect(gain);
+                gain.connect(state.audioCtx.destination);
+                osc.start(now + 0.15 + i * 0.08);
+                osc.stop(now + 1.3 + i * 0.08);
+            });
+        } catch (e) {
+            console.warn("Startup chime error:", e);
         }
     }
 
@@ -288,6 +351,10 @@ async function initLobbyMicrophonePreview() {
                 stream.getTracks().forEach(t => t.stop());
                 return;
             }
+            if (document.hidden) {
+                setTimeout(updateMeter, 400);
+                return;
+            }
             // Zaman alanı dalga formu (Time domain) ile kesin ve anlık mikrofon hareketi
             analyser.getByteTimeDomainData(dataArray);
             let maxDelta = 0;
@@ -381,21 +448,31 @@ async function setupLocalAudioStream(deviceId = null) {
 function startVoiceActivityDetection() {
     if (state.micLevelAnimationId) {
         cancelAnimationFrame(state.micLevelAnimationId);
+        clearTimeout(state.micLevelAnimationId);
     }
 
     const dataArray = new Uint8Array(state.analyser.fftSize);
 
+    function scheduleNext() {
+        if (document.hidden) {
+            // Pencere arkadayken düşük frekansta (100ms) çalışıp CPU ve RAM harcamaz
+            state.micLevelAnimationId = setTimeout(checkLevel, 100);
+        } else {
+            state.micLevelAnimationId = requestAnimationFrame(checkLevel);
+        }
+    }
+
     function checkLevel() {
         if (!state.localStream || state.isMuted || state.isDeafened) {
             setSpeakingState(false);
-            state.micLevelAnimationId = requestAnimationFrame(checkLevel);
+            scheduleNext();
             return;
         }
 
         // Bas-konuş modu
         if (state.inputMode === 'ptt') {
             setSpeakingState(state.isPttPressed);
-            state.micLevelAnimationId = requestAnimationFrame(checkLevel);
+            scheduleNext();
             return;
         }
 
@@ -419,7 +496,7 @@ function startVoiceActivityDetection() {
             setSpeakingState(false);
         }
 
-        state.micLevelAnimationId = requestAnimationFrame(checkLevel);
+        scheduleNext();
     }
 
     checkLevel();
@@ -443,29 +520,54 @@ function setSpeakingState(speaking) {
 // ============================================================================
 // 4. WEBSOCKET VE SİNYALLEŞME (ODAYA KATILMA)
 // ============================================================================
-async function joinRoom() {
+async function joinRoom(isAutoJoin = false) {
     const nick = el.nicknameInput.value.trim() || 'Misafir';
     const room = el.roomInput.value.trim() || 'gaming';
     const pass = el.passwordInput.value.trim();
-    const initialChannel = el.selectInitialChannel ? el.selectInitialChannel.value : 'channel-1';
+    const savedChannel = localStorage.getItem('agalar_channel');
+    const initialChannel = (el.selectInitialChannel && el.selectInitialChannel.value) 
+        ? el.selectInitialChannel.value 
+        : (savedChannel || 'channel-1');
 
     state.nickname = nick;
     state.roomId = room;
     state.password = pass;
     state.voiceChannel = initialChannel;
 
+    try {
+        localStorage.setItem('agalar_nick', nick);
+        localStorage.setItem('agalar_room', room);
+        localStorage.setItem('agalar_color', state.avatarColor);
+        localStorage.setItem('agalar_channel', initialChannel);
+        localStorage.setItem('agalar_logged_in', '1');
+        sessionStorage.removeItem('agalar_manual_leave');
+    } catch (e) {}
+
+    if (el.dtChannelIndicator) {
+        el.dtChannelIndicator.textContent = `${state.channelNames[state.voiceChannel] || state.voiceChannel} (${state.roomId})`;
+    }
+
     hideError();
-    el.errorMessage.classList.add('hidden');
+    if (el.errorMessage) el.errorMessage.classList.add('hidden');
+
+    // Mikrofonu hazırla (İzin verilmişse hemen açılır, tarayıcı ilk tıklamayı bekliyorsa odaya girişi engellemez)
+    try {
+        await setupLocalAudioStream();
+    } catch (audioErr) {
+        console.warn("Mikrofon otomatik açılamadı (Kullanıcı izni veya sessiz mod):", audioErr);
+        state.isMuted = true;
+    }
 
     try {
-        // Yerel mikrofonu hazırla
-        await setupLocalAudioStream();
-
         // WebSocket URL oluştur
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         let wsUrl = `${protocol}//${window.location.host}/ws/${encodeURIComponent(state.roomId)}?client_id=${state.myId}&nickname=${encodeURIComponent(state.nickname)}&avatar_color=${encodeURIComponent(state.avatarColor)}&voice_channel=${encodeURIComponent(state.voiceChannel)}`;
         if (state.password) {
             wsUrl += `&password=${encodeURIComponent(state.password)}`;
+        }
+
+        if (state.ws) {
+            try { state.ws.close(); } catch(e) {}
         }
 
         state.ws = new WebSocket(wsUrl);
@@ -488,7 +590,9 @@ async function joinRoom() {
 
         state.ws.onerror = (err) => {
             console.error("WebSocket hatası:", err);
-            showError("Sunucuya bağlanırken bir hata oluştu.");
+            if (!isAutoJoin) {
+                showError("Sunucuya bağlanırken bir hata oluştu.");
+            }
         };
 
         state.ws.onclose = (event) => {
@@ -498,12 +602,21 @@ async function joinRoom() {
                 // Şifre hatası veya oda dolu
                 switchToLobbyUI();
                 showError("Bağlantı reddedildi: Hatalı oda şifresi veya oda dolu!");
+            } else if (!sessionStorage.getItem('agalar_manual_leave')) {
+                // Beklenmedik bağlantı kopması durumunda otomatik yeniden bağlan
+                if (el.dockStatus) el.dockStatus.textContent = "Yeniden bağlanılıyor...";
+                setTimeout(() => {
+                    if (!sessionStorage.getItem('agalar_manual_leave') && (!state.ws || state.ws.readyState === WebSocket.CLOSED)) {
+                        console.log("Sunucuya yeniden bağlanılıyor...");
+                        joinRoom(true);
+                    }
+                }, 3500);
             }
         };
 
     } catch (err) {
         console.error("Odaya katılma hatası:", err);
-        showError("Mikrofona erişilemedi! Lütfen tarayıcı izinlerini kontrol edin.");
+        showError("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.");
     }
 }
 
@@ -923,7 +1036,7 @@ function hideAutoplayPrompt() {
 // ============================================================================
 function addSelfUserCard() {
     removeUserCard(state.myId);
-    const card = createUserCardElement(state.myId, state.nickname, state.avatarColor, true);
+    const card = createUserCardElement(state.myId, state.nickname, state.avatarColor, true, state.isMuted, state.isDeafened);
     el.voiceGrid.prepend(card);
     updateGridItemCount();
 }
@@ -1056,8 +1169,20 @@ function updateOnlineCount(count) {
 // ============================================================================
 // 7. SES VE GİRİŞ KONTROLLERİ (MUTE, DEAFEN, BAS-KONUŞ)
 // ============================================================================
-function toggleMute() {
-    state.isMuted = !state.isMuted;
+async function toggleMute() {
+    if (!state.localStream) {
+        try {
+            await setupLocalAudioStream();
+            state.isMuted = false;
+        } catch (e) {
+            console.warn("Mikrofon başlatılamadı:", e);
+            alert("Mikrofona erişilemedi! Lütfen tarayıcı izinlerini kontrol edin.");
+            return;
+        }
+    } else {
+        state.isMuted = !state.isMuted;
+    }
+
     SoundEffects.toggleMute(state.isMuted);
 
     const track = state.localStream?.getAudioTracks()[0];
@@ -1491,7 +1616,22 @@ function switchToRoomUI() {
     window.history.replaceState({}, '', url);
 }
 
-function switchVoiceChannel(newChannelId) {
+async function switchVoiceChannel(newChannelId) {
+    // Eğer mikrofon daha önce başlatılamadıysa kullanıcı kanal seçtiğinde başlat
+    if (!state.localStream) {
+        try {
+            await setupLocalAudioStream();
+            state.isMuted = false;
+            updateUserCardState(state.myId, false, state.isDeafened, false);
+        } catch (e) {
+            console.warn("Kanal seçerken mikrofon başlatılamadı:", e);
+        }
+    }
+
+    try {
+        localStorage.setItem('agalar_channel', newChannelId);
+    } catch (e) {}
+
     if (state.voiceChannel === newChannelId) return;
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
 
@@ -1525,6 +1665,9 @@ function switchVoiceChannel(newChannelId) {
     // Başlığı ve arayüzü güncelle
     if (el.currentRoomName) {
         el.currentRoomName.textContent = `${state.roomId} • ${state.channelNames[state.voiceChannel] || ''}`;
+    }
+    if (el.dtChannelIndicator) {
+        el.dtChannelIndicator.textContent = `${state.channelNames[state.voiceChannel] || state.voiceChannel} (${state.roomId})`;
     }
     renderVoiceChannelsUI();
 }
@@ -1595,6 +1738,10 @@ function renderVoiceChannelsUI() {
 }
 
 function switchToLobbyUI() {
+    try {
+        sessionStorage.setItem('agalar_manual_leave', '1');
+    } catch (e) {}
+
     el.roomScreen.classList.add('hidden');
     el.lobbyScreen.classList.remove('hidden');
 
@@ -1785,8 +1932,28 @@ function initEventListeners() {
     // Form Katılma
     el.joinForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        joinRoom();
+        try {
+            sessionStorage.removeItem('agalar_manual_leave');
+        } catch (e) {}
+        joinRoom(false);
     });
+
+    // Kayıtlı Oturumu Sıfırlama
+    if (el.btnClearSession) {
+        el.btnClearSession.addEventListener('click', () => {
+            try {
+                localStorage.removeItem('agalar_nick');
+                localStorage.removeItem('agalar_room');
+                localStorage.removeItem('agalar_channel');
+                localStorage.removeItem('agalar_logged_in');
+                sessionStorage.setItem('agalar_manual_leave', '1');
+            } catch (e) {}
+            if (el.savedSessionHint) el.savedSessionHint.classList.add('hidden');
+            el.nicknameInput.value = 'Misafir';
+            el.roomInput.value = 'gaming';
+            alert('Kayıtlı oturum temizlendi. Yeni kullanıcı adı belirleyebilirsiniz.');
+        });
+    }
 
     // Avatar Rengi Seçici
     el.colorPicker.addEventListener('click', (e) => {
@@ -1967,6 +2134,7 @@ function initEventListeners() {
             closeLightbox();
             if (el.settingsModal) el.settingsModal.classList.add('hidden');
             if (el.inviteModal) el.inviteModal.classList.add('hidden');
+            if (el.desktopInfoModal) el.desktopInfoModal.classList.add('hidden');
         } else if (e.code === 'KeyM' && !e.repeat) {
             toggleMute();
         } else if (e.code === 'KeyD' && !e.repeat) {
@@ -2023,8 +2191,79 @@ function initEventListeners() {
         });
     }
 
+    // =========================================================================
+    // MASAÜSTÜ UYGULAMASI (PWA) VE BAŞLATICI DİNLENİYOR
+    // =========================================================================
+    const triggerPwaInstall = () => {
+        if (state.deferredPrompt) {
+            state.deferredPrompt.prompt();
+            state.deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult && choiceResult.outcome === 'accepted') {
+                    console.log('Kullanıcı PWA kurulumunu onayladı');
+                    if (el.btnInstallPwa) el.btnInstallPwa.classList.add('hidden');
+                    if (el.btnPwaInstallNav) el.btnPwaInstallNav.classList.add('hidden');
+                }
+                state.deferredPrompt = null;
+            });
+        } else {
+            // Tarayıcı otomatik prompt desteklemiyorsa modal ile rehberlik et
+            if (el.desktopInfoModal) el.desktopInfoModal.classList.remove('hidden');
+        }
+    };
+
+    if (el.btnInstallPwa) el.btnInstallPwa.addEventListener('click', triggerPwaInstall);
+    if (el.btnPwaInstallNav) el.btnPwaInstallNav.addEventListener('click', triggerPwaInstall);
+
+    if (el.btnInfoDesktop) {
+        el.btnInfoDesktop.addEventListener('click', () => {
+            if (el.desktopInfoModal) el.desktopInfoModal.classList.remove('hidden');
+        });
+    }
+
+    if (el.btnCloseDesktopInfo) {
+        el.btnCloseDesktopInfo.addEventListener('click', () => {
+            if (el.desktopInfoModal) el.desktopInfoModal.classList.add('hidden');
+        });
+    }
+
+    if (el.desktopInfoModal) {
+        el.desktopInfoModal.addEventListener('click', (e) => {
+            if (e.target === el.desktopInfoModal) el.desktopInfoModal.classList.add('hidden');
+        });
+    }
+
+    // Başlatıcı .bat indirme linkini geçerli sunucu adresine göre güncelle
+    if (el.btnDownloadBat) {
+        const originUrl = window.location.origin;
+        el.btnDownloadBat.href = `/api/download-launcher?url=${encodeURIComponent(originUrl)}`;
+    }
+
+    // Tarayıcı PWA kurulum tetikleyicisi
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        state.deferredPrompt = e;
+        // Kurulum butonlarını görünür yap
+        if (el.btnInstallPwa) el.btnInstallPwa.classList.remove('hidden');
+        if (el.btnPwaInstallNav) el.btnPwaInstallNav.classList.remove('hidden');
+    });
+
+    window.addEventListener('appinstalled', () => {
+        console.log('Uygulama masaüstüne başarıyla kuruldu.');
+        state.deferredPrompt = null;
+        if (el.btnInstallPwa) el.btnInstallPwa.classList.add('hidden');
+        if (el.btnPwaInstallNav) el.btnPwaInstallNav.classList.add('hidden');
+    });
+
+    // PWA standalone modunda mı çalışıyor kontrol et
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (isStandalone) {
+        // Zaten masaüstü penceresinde çalışıyorsa kurulum butonlarını gizle
+        if (el.btnInstallPwa) el.btnInstallPwa.classList.add('hidden');
+        if (el.btnPwaInstallNav) el.btnPwaInstallNav.classList.add('hidden');
+    }
+
     // Tarayıcı Autoplay Engeli Çözücü
-    function unlockAudios() {
+    async function unlockAudios() {
         if (state.audioCtx && state.audioCtx.state === 'suspended') {
             state.audioCtx.resume();
         }
@@ -2033,6 +2272,14 @@ function initEventListeners() {
                 p.audioEl.play().catch(() => {});
             }
         });
+        // Eğer mikrofon kullanıcı etkileşimi beklenmesi nedeniyle açılamadıysa ilk tıklamada devreye sok
+        if (!state.localStream && state.ws && state.ws.readyState === WebSocket.OPEN) {
+            try {
+                await setupLocalAudioStream();
+                state.isMuted = false;
+                updateUserCardState(state.myId, false, state.isDeafened, false);
+            } catch(e) {}
+        }
         hideAutoplayPrompt();
     }
     ['click', 'keydown', 'touchstart'].forEach(evt => {
@@ -2044,27 +2291,165 @@ function initEventListeners() {
 }
 
 // ============================================================================
+// 10. MASAÜSTÜ ÖZEL DENEYİMİ VE AÇILIŞ ANİMASYONU (SPLASH SCREEN)
+// ============================================================================
+function initDesktopExperience() {
+    const params = new URLSearchParams(window.location.search);
+    const isDesktopParam = params.get('mode') === 'desktop';
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const isSavedDesktop = localStorage.getItem('agalar_desktop_client') === '1';
+
+    if (isDesktopParam || isStandalone || isSavedDesktop) {
+        document.body.classList.add('desktop-mode');
+        localStorage.setItem('agalar_desktop_client', '1');
+
+        // Masaüstü uygulamasında kurulum kutusunu gizle
+        const appBox = document.querySelector('.desktop-app-box');
+        if (appBox) appBox.classList.add('hidden');
+        if (el.btnPwaInstallNav) el.btnPwaInstallNav.classList.add('hidden');
+
+        // Masaüstü Açılış Animasyonunu (Splash Screen) çalıştır
+        runSplashScreenAnimation();
+    }
+
+    // Kompakt mod buton dinleyicisi
+    if (el.btnToggleCompact) {
+        el.btnToggleCompact.addEventListener('click', () => {
+            const isCompact = document.body.classList.toggle('compact-mode');
+            if (el.compactText) el.compactText.textContent = isCompact ? "Genişlet" : "Kompakt Mod";
+            if (el.compactIcon) el.compactIcon.textContent = isCompact ? "🗗" : "🗖";
+        });
+    }
+}
+
+function runSplashScreenAnimation() {
+    if (!el.splashScreen) return;
+    el.splashScreen.classList.remove('hidden');
+
+    // Ses motoru başlangıç tonunu çal
+    setTimeout(() => {
+        SoundEffects.playStartupChime();
+    }, 250);
+
+    const steps = [
+        { p: 25, t: "👑 AGALAR SESLİ SOHBET..." },
+        { p: 55, t: "⚡ Düşük RAM Modu Aktif (~34MB)..." },
+        { p: 85, t: "🔊 Ses Motoru Hazırlanıyor..." },
+        { p: 100, t: "Hazır! Hoş Geldin Agam!" }
+    ];
+
+    let cur = 0;
+    const timer = setInterval(() => {
+        if (cur < steps.length) {
+            if (el.splashProgressFill) el.splashProgressFill.style.width = steps[cur].p + '%';
+            if (el.splashStatusText) el.splashStatusText.textContent = steps[cur].t;
+            cur++;
+        } else {
+            clearInterval(timer);
+            setTimeout(() => {
+                el.splashScreen.classList.add('fade-out');
+                setTimeout(() => {
+                    el.splashScreen.classList.add('hidden');
+                }, 600);
+            }, 350);
+        }
+    }, 350);
+}
+
+// ============================================================================
 // 11. BAŞLATICI (INITIALIZATION)
 // ============================================================================
 window.addEventListener('DOMContentLoaded', () => {
-    // URL parametrelerini oku (?room=gaming&nick=Tutku&pass=123&channel=channel-1)
     const params = new URLSearchParams(window.location.search);
-    if (params.get('room')) {
-        el.roomInput.value = params.get('room');
-    }
+
+    // Kayıtlı kullanıcı adı ve oda varsa otomatik doldur
+    const savedNick = localStorage.getItem('agalar_nick');
     if (params.get('nick')) {
         el.nicknameInput.value = params.get('nick');
+    } else if (savedNick) {
+        el.nicknameInput.value = savedNick;
     } else {
         el.nicknameInput.value = "Misafir";
     }
+
+    const savedRoom = localStorage.getItem('agalar_room');
+    if (params.get('room')) {
+        el.roomInput.value = params.get('room');
+    } else if (savedRoom) {
+        el.roomInput.value = savedRoom;
+    }
+
+    const savedColor = localStorage.getItem('agalar_color');
+    if (savedColor) {
+        state.avatarColor = savedColor;
+        document.querySelectorAll('.color-swatch').forEach(s => {
+            if (s.dataset.color === savedColor) {
+                s.classList.add('active');
+            } else {
+                s.classList.remove('active');
+            }
+        });
+    }
+
+    const savedChannel = localStorage.getItem('agalar_channel');
     if (params.get('pass')) {
         el.passwordInput.value = params.get('pass');
     }
     if (params.get('channel') && el.selectInitialChannel) {
         el.selectInitialChannel.value = params.get('channel');
+    } else if (savedChannel && el.selectInitialChannel) {
+        el.selectInitialChannel.value = savedChannel;
+    }
+
+    if (savedNick && el.savedSessionHint && el.savedNickLabel) {
+        el.savedNickLabel.textContent = savedNick;
+        el.savedSessionHint.classList.remove('hidden');
     }
 
     initEventListeners();
     initLobbyMicrophonePreview();
     checkTunnelStatus();
+    initDesktopExperience();
+
+    // Otomatik Giriş:
+    // Daha önce giriş yapıldıysa "Odaya Katıl" basmaya gerek kalmadan doğrudan ses kanalları ekranına geç!
+    const isManualLeave = sessionStorage.getItem('agalar_manual_leave') === '1';
+    const hasPreviousSession = Boolean(localStorage.getItem('agalar_logged_in') === '1' || localStorage.getItem('agalar_nick'));
+
+    if (hasPreviousSession && !isManualLeave) {
+        console.log("⚡ Kayıtlı oturum tespit edildi (" + (savedNick || 'Misafir') + "). Odaya katıl butonuna basmaya gerek kalmadan doğrudan ses kanalları ekranı açılıyor...");
+
+        // Ekran kırpışmasını önlemek için lobi ekranını hemen gizle ve oda ekranını göster
+        el.lobbyScreen.classList.add('hidden');
+        el.roomScreen.classList.remove('hidden');
+
+        const nick = el.nicknameInput.value.trim() || 'Misafir';
+        const room = el.roomInput.value.trim() || 'gaming';
+        const ch = (el.selectInitialChannel && el.selectInitialChannel.value) || savedChannel || 'channel-1';
+        state.nickname = nick;
+        state.roomId = room;
+        state.voiceChannel = ch;
+
+        if (el.currentRoomName) {
+            el.currentRoomName.textContent = `${room} • ${state.channelNames[ch] || 'Ses Odası 1'}`;
+        }
+        if (el.dockUsername) el.dockUsername.textContent = nick;
+        if (el.dockAvatar) {
+            el.dockAvatar.textContent = nick.charAt(0).toUpperCase();
+            el.dockAvatar.style.backgroundColor = state.avatarColor;
+        }
+        renderVoiceChannelsUI();
+
+        // Odaya ve ses kanallarına arka planda anında bağlan
+        joinRoom(true);
+    }
+
+    // Service Worker Kaydı (PWA & Çevrimdışı Önbellek)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+            console.log('PWA ServiceWorker devrede:', reg.scope);
+        }).catch((err) => {
+            console.log('ServiceWorker kayıt detayı:', err);
+        });
+    }
 });
