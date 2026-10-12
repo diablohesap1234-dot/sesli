@@ -53,7 +53,19 @@ const state = {
         'channel-5': 'Ses Odası 5'
     },
     allUsers: {}, // client_id -> { nickname, avatar_color, voice_channel, is_muted, is_deafened, is_speaking }
-    deferredPrompt: null
+    deferredPrompt: null,
+
+    // Ortak Tarayıcı & Birlikte Dizi/Video İzleme State
+    sharedBrowser: {
+        active: false,
+        controllerId: null,
+        controllerName: null,
+        mode: 'embed', // 'embed', 'video', 'stream'
+        url: '',
+        title: '',
+        screenStream: null,
+        pendingControlReqFrom: null // { id, name }
+    }
 };
 
 // WebRTC STUN Configuration
@@ -196,7 +208,34 @@ const el = {
     btnToggleCompact: document.getElementById('btn-toggle-compact'),
     compactIcon: document.getElementById('compact-icon'),
     compactText: document.getElementById('compact-text'),
-    dtChannelIndicator: document.getElementById('dt-channel-indicator')
+    dtChannelIndicator: document.getElementById('dt-channel-indicator'),
+
+    // Ortak Tarayıcı & Sinema Sahnesi
+    voiceSection: document.getElementById('voice-section'),
+    btnSharedBrowserToggle: document.getElementById('btn-shared-browser-toggle'),
+    sharedBrowserStage: document.getElementById('shared-browser-stage'),
+    stageControllerBadge: document.getElementById('stage-controller-badge'),
+    stageUrlForm: document.getElementById('stage-url-form'),
+    stageUrlInput: document.getElementById('stage-url-input'),
+    btnStageLoadUrl: document.getElementById('btn-stage-load-url'),
+    btnStageShareScreen: document.getElementById('btn-stage-share-screen'),
+    btnStageRequestCtrl: document.getElementById('btn-stage-request-ctrl'),
+    btnStageFullscreen: document.getElementById('btn-stage-fullscreen'),
+    btnStageClose: document.getElementById('btn-stage-close'),
+    stageEmptyView: document.getElementById('stage-empty-view'),
+    btnEmptyStartStream: document.getElementById('btn-empty-start-stream'),
+    stageIframe: document.getElementById('stage-iframe'),
+    stageVideo: document.getElementById('stage-video'),
+    stageStreamWrap: document.getElementById('stage-stream-wrap'),
+    stageStreamVideo: document.getElementById('stage-stream-video'),
+    stageDockStrip: document.getElementById('stage-dock-strip'),
+    stageDockSpeakers: document.getElementById('stage-dock-speakers'),
+
+    // Kontrol Talep Modalı
+    controlRequestModal: document.getElementById('control-request-modal'),
+    ctrlReqText: document.getElementById('ctrl-req-text'),
+    btnGrantCtrlRequest: document.getElementById('btn-grant-ctrl-request'),
+    btnDenyCtrlRequest: document.getElementById('btn-deny-ctrl-request')
 };
 
 // ============================================================================
@@ -668,6 +707,10 @@ function handleServerMessage(msg) {
             }
             renderChatTabs();
             renderChatMessages();
+
+            if (msg.shared_browser) {
+                handleBrowserStateUpdate(msg.shared_browser);
+            }
             break;
 
         case 'user-joined':
@@ -798,6 +841,26 @@ function handleServerMessage(msg) {
             appendSystemMessage(msg.text, msg.timestamp);
             break;
 
+        case 'browser-state-update':
+            // Ortak tarayıcı / sinema sahnesi durumu güncellendi
+            handleBrowserStateUpdate(msg.state);
+            break;
+
+        case 'browser-sync-player':
+            // Video oynatıcı oynat/durdur/ileri sar senkronizasyonu
+            handleBrowserSyncPlayer(msg);
+            break;
+
+        case 'browser-control-requested':
+            // İzleyici kontrol yetkisi talep etti
+            handleBrowserControlRequested(msg.from_id, msg.from_name);
+            break;
+
+        case 'browser-control-denied':
+            // Yönetici kontrol talebini reddetti
+            alert(`${msg.from_name || 'Yönetici'} kontrol yetkisi talebinizi reddetti.`);
+            break;
+
         case 'pong':
             // Gecikme ölçümü
             const latency = Date.now() - msg.t;
@@ -850,8 +913,25 @@ function createPeerConnection(peerId, isInitiator) {
         });
     }
 
-    // Karşı taraftan gelen ses akışını yakala ve oynat
+    // Eğer aktif sekme/ekran yayını varsa video track'ini de ekle
+    if (state.sharedBrowser && state.sharedBrowser.screenStream) {
+        state.sharedBrowser.screenStream.getTracks().forEach(track => {
+            pc.addTrack(track, state.sharedBrowser.screenStream);
+        });
+    }
+
+    // Karşı taraftan gelen ses veya video akışını yakala
     pc.ontrack = (event) => {
+        if (event.track.kind === 'video') {
+            console.log(`[WebRTC] ${peerId} canlı video yayını alındı:`, event);
+            const remoteVideoStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
+            if (el.stageStreamVideo) {
+                el.stageStreamVideo.srcObject = remoteVideoStream;
+                el.stageStreamVideo.play().catch(e => console.warn("Stream video play error:", e));
+            }
+            return;
+        }
+
         console.log(`[WebRTC] ${peerId} ses akışı başarıyla alındı:`, event);
         const remoteStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
         audioEl.srcObject = remoteStream;
@@ -869,6 +949,26 @@ function createPeerConnection(peerId, isInitiator) {
 
         // Arkadaşın ses seviyesini analiz ederek konuştuğunda yeşil halkayı tetikle
         monitorRemoteStreamVolume(peerId, remoteStream);
+    };
+
+    // Parça eklendiğinde yeniden anlaşma (Renegotiation)
+    pc.onnegotiationneeded = async () => {
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({
+                    type: 'signal',
+                    target_id: peerId,
+                    data: {
+                        type: 'offer',
+                        sdp: pc.localDescription
+                    }
+                }));
+            }
+        } catch (e) {
+            console.warn("Renegotiation error:", e);
+        }
     };
 
     // ICE Adaylarını sunucu üzerinden karşı tarafa ilet
@@ -1139,6 +1239,14 @@ function updateUserCardSpeaking(userId, isSpeaking) {
             card.classList.remove('speaking');
         }
     }
+    const stagePill = document.getElementById(`stage-speaker-${userId}`);
+    if (stagePill) {
+        if (isSpeaking) {
+            stagePill.classList.add('speaking');
+        } else {
+            stagePill.classList.remove('speaking');
+        }
+    }
 }
 
 function updateUserCardState(userId, isMuted, isDeafened, isSpeaking) {
@@ -1155,6 +1263,9 @@ function updateUserCardState(userId, isMuted, isDeafened, isSpeaking) {
     }
 
     updateUserCardSpeaking(userId, isSpeaking);
+    if (state.sharedBrowser && state.sharedBrowser.active) {
+        renderStageSpeakers();
+    }
 }
 
 function updateGridItemCount() {
@@ -1926,6 +2037,384 @@ function escapeHtml(str) {
 }
 
 // ============================================================================
+// 9.5 ORTAK TARAYICI & BİRLİKTE DİZİ/VİDEO İZLEME (SİNEMA MODU)
+// ============================================================================
+
+function parseYouTubeUrl(url) {
+    if (!url) return null;
+    const u = url.trim();
+
+    // YouTube ana sayfası veya sadece 'youtube' yazılmışsa -> Arama listesi embed'i aç!
+    const clean = u.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '');
+    if (clean === 'youtube.com' || clean === 'm.youtube.com' || clean === 'youtube') {
+        return `https://www.youtube-nocookie.com/embed?listType=search&list=film%20ve%20dizi`;
+    }
+
+    // 1. Standart video ID (watch?v=, youtu.be/, shorts/, embed/)
+    const match = u.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|shorts\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
+    if (match && match[1]) {
+        return `https://www.youtube-nocookie.com/embed/${match[1]}?autoplay=1&enablejsapi=1&rel=0`;
+    }
+
+    // 2. Oynatma Listesi (playlist?list=...)
+    const matchPlaylist = u.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+    if (matchPlaylist && matchPlaylist[1]) {
+        return `https://www.youtube-nocookie.com/embed/videoseries?list=${matchPlaylist[1]}&autoplay=1`;
+    }
+
+    // 3. YouTube Arama Linki (youtube.com/results?search_query=...)
+    const matchSearch = u.match(/[?&]search_query=([^&]+)/);
+    if (matchSearch && matchSearch[1]) {
+        return `https://www.youtube-nocookie.com/embed?listType=search&list=${matchSearch[1]}&autoplay=1`;
+    }
+
+    return null;
+}
+
+function isDirectVideoUrl(url) {
+    if (!url) return false;
+    const cleanUrl = url.split('?')[0].toLowerCase();
+    return cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.m3u8') || cleanUrl.endsWith('.ogg') || cleanUrl.endsWith('.mov');
+}
+
+function resolveMediaUrl(url) {
+    if (!url) return { url: '', mode: 'embed' };
+    let target = url.trim();
+
+    // 1. Doğrudan video dosyası (.mp4, .webm, .m3u8)
+    if (isDirectVideoUrl(target)) {
+        return { url: target, mode: 'video' };
+    }
+
+    // 2. YouTube videosu, oynatma listesi veya YouTube ana sayfası
+    const ytEmbed = parseYouTubeUrl(target);
+    if (ytEmbed) {
+        return { url: ytEmbed, mode: 'embed' };
+    }
+
+    // 3. Eğer kullanıcı direkt arama kelimesi yazdıysa (örn: "kurtlar vadisi", "avatar")
+    if (!target.includes('.') && !target.startsWith('http')) {
+        return {
+            url: `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(target)}&autoplay=1`,
+            mode: 'embed'
+        };
+    }
+
+    // 4. Protokol eksikse https ekle
+    if (!target.startsWith('http://') && !target.startsWith('https://')) {
+        target = 'https://' + target;
+    }
+
+    // 5. DuckDuckGo doğrudan iframe destekler
+    if (target.includes('duckduckgo.com')) {
+        return { url: target, mode: 'embed' };
+    }
+
+    // 6. Google veya diğer web siteleri (X-Frame-Options engelini aşmak için dahili proxy üzerinden açılır)
+    return {
+        url: `/api/proxy?url=${encodeURIComponent(target)}`,
+        mode: 'embed'
+    };
+}
+
+function openSharedBrowser(url = '', mode = 'embed') {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+        alert("Ortak tarayıcıyı açmak için önce bir odaya bağlı olmalısınız.");
+        return;
+    }
+    state.ws.send(JSON.stringify({
+        type: 'browser-open',
+        url: url,
+        mode: mode
+    }));
+}
+
+function closeSharedBrowser() {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    if (state.sharedBrowser.screenStream) {
+        stopScreenShare();
+    }
+    state.ws.send(JSON.stringify({
+        type: 'browser-close'
+    }));
+}
+
+function handleBrowserStateUpdate(bState) {
+    if (!bState) return;
+    state.sharedBrowser.active = !!bState.active;
+    state.sharedBrowser.controllerId = bState.controller_id;
+    state.sharedBrowser.controllerName = bState.controller_name;
+    state.sharedBrowser.mode = bState.mode || 'embed';
+    state.sharedBrowser.url = bState.url || '';
+
+    const isController = (state.sharedBrowser.controllerId === state.myId);
+
+    if (state.sharedBrowser.active) {
+        // Sinema sahnesini aç
+        if (el.voiceSection) el.voiceSection.classList.add('cinema-active');
+        if (el.sharedBrowserStage) el.sharedBrowserStage.classList.remove('hidden');
+        if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.add('active');
+
+        // Yönetici rozeti ve kontroller
+        if (isController) {
+            if (el.stageControllerBadge) {
+                el.stageControllerBadge.textContent = "👑 Yönetici: Sen";
+                el.stageControllerBadge.style.color = "#FEE75C";
+            }
+            if (el.stageUrlInput) {
+                el.stageUrlInput.removeAttribute('disabled');
+                el.stageUrlInput.value = state.sharedBrowser.url || '';
+            }
+            if (el.btnStageLoadUrl) el.btnStageLoadUrl.style.display = '';
+            if (el.btnStageShareScreen) el.btnStageShareScreen.style.display = '';
+            if (el.btnStageRequestCtrl) el.btnStageRequestCtrl.classList.add('hidden');
+            if (el.btnStageClose) el.btnStageClose.style.display = '';
+        } else {
+            const ctrlName = state.sharedBrowser.controllerName || "Biri";
+            if (el.stageControllerBadge) {
+                el.stageControllerBadge.textContent = `👑 Yöneten: ${ctrlName}`;
+                el.stageControllerBadge.style.color = "#00B0F4";
+            }
+            if (el.stageUrlInput) {
+                el.stageUrlInput.setAttribute('disabled', 'true');
+                el.stageUrlInput.value = state.sharedBrowser.url ? `İzleniyor: ${state.sharedBrowser.url}` : '';
+            }
+            if (el.btnStageLoadUrl) el.btnStageLoadUrl.style.display = 'none';
+            if (el.btnStageShareScreen) el.btnStageShareScreen.style.display = 'none';
+            if (el.btnStageRequestCtrl) el.btnStageRequestCtrl.classList.remove('hidden');
+            if (el.btnStageClose) el.btnStageClose.style.display = 'none';
+        }
+
+        // Medya görüntüleyiciyi ayarla
+        updateStageMediaView(state.sharedBrowser.url, state.sharedBrowser.mode);
+        renderStageSpeakers();
+    } else {
+        // Sinema sahnesini kapat
+        if (el.voiceSection) el.voiceSection.classList.remove('cinema-active');
+        if (el.sharedBrowserStage) el.sharedBrowserStage.classList.add('hidden');
+        if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.remove('active');
+
+        // Medyaları durdur ve temizle
+        if (el.stageIframe) el.stageIframe.src = '';
+        if (el.stageVideo) {
+            el.stageVideo.pause();
+            el.stageVideo.src = '';
+        }
+        if (el.stageStreamVideo) {
+            el.stageStreamVideo.pause();
+            el.stageStreamVideo.srcObject = null;
+        }
+        if (state.sharedBrowser.screenStream) {
+            stopScreenShare();
+        }
+    }
+}
+
+function updateStageMediaView(url, mode) {
+    if (el.stageEmptyView) el.stageEmptyView.classList.add('hidden');
+    if (el.stageIframe) el.stageIframe.classList.add('hidden');
+    if (el.stageVideo) el.stageVideo.classList.add('hidden');
+    if (el.stageStreamWrap) el.stageStreamWrap.classList.add('hidden');
+
+    if (!url && mode !== 'stream') {
+        if (el.stageEmptyView) el.stageEmptyView.classList.remove('hidden');
+        return;
+    }
+
+    if (mode === 'stream') {
+        if (el.stageStreamWrap) el.stageStreamWrap.classList.remove('hidden');
+    } else if (mode === 'video' || isDirectVideoUrl(url)) {
+        if (el.stageVideo) {
+            el.stageVideo.classList.remove('hidden');
+            if (el.stageVideo.src !== url) {
+                el.stageVideo.src = url;
+                el.stageVideo.load();
+            }
+        }
+    } else {
+        // YouTube, Proxy veya Web Iframe
+        if (el.stageIframe) {
+            el.stageIframe.classList.remove('hidden');
+            const resolved = resolveMediaUrl(url);
+            const targetUrl = resolved.url || url;
+            if (el.stageIframe.src !== targetUrl) {
+                el.stageIframe.src = targetUrl;
+            }
+        }
+    }
+}
+
+function submitStageUrl(url) {
+    if (!url) return;
+    if (state.sharedBrowser.controllerId !== state.myId) {
+        alert("Yalnızca yönetici URL değiştirebilir. 'Kontrol İste' butonuna basarak yetki alabilirsiniz.");
+        return;
+    }
+
+    const resolved = resolveMediaUrl(url);
+
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'browser-change-url',
+            url: resolved.url,
+            mode: resolved.mode
+        }));
+    }
+}
+
+async function startScreenShare() {
+    try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                cursor: "always"
+            },
+            audio: true
+        });
+
+        state.sharedBrowser.screenStream = stream;
+
+        // Kendi önizlememiz
+        if (el.stageStreamVideo) {
+            el.stageStreamVideo.srcObject = stream;
+            el.stageStreamVideo.play().catch(e => console.warn(e));
+        }
+
+        // WebRTC üzerinden diğer kullanıcılara video track'i gönder
+        const videoTrack = stream.getVideoTracks()[0];
+        const audioTrack = stream.getAudioTracks()[0];
+
+        Object.values(state.peers).forEach(peer => {
+            if (videoTrack) peer.pc.addTrack(videoTrack, stream);
+            if (audioTrack) peer.pc.addTrack(audioTrack, stream);
+        });
+
+        // Sunucuya stream moduna geçtiğimizi bildir
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({
+                type: 'browser-change-url',
+                url: 'CANLI_YAYIN',
+                mode: 'stream'
+            }));
+        }
+
+        // Kullanıcı tarayıcı üzerinden yayını durdurursa
+        videoTrack.onended = () => {
+            stopScreenShare();
+        };
+
+    } catch (err) {
+        console.warn("Sekme paylaşımı iptal edildi veya hata:", err);
+    }
+}
+
+function stopScreenShare() {
+    if (state.sharedBrowser.screenStream) {
+        state.sharedBrowser.screenStream.getTracks().forEach(t => t.stop());
+        state.sharedBrowser.screenStream = null;
+    }
+    if (el.stageStreamVideo) {
+        el.stageStreamVideo.srcObject = null;
+    }
+    if (state.sharedBrowser.controllerId === state.myId && state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'browser-change-url',
+            url: '',
+            mode: 'embed'
+        }));
+    }
+}
+
+function requestBrowserControl() {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    state.ws.send(JSON.stringify({
+        type: 'browser-request-control'
+    }));
+    alert("Kontrol yetkisi talebiniz mevcut yöneticiye iletildi. Onay bekleniyor...");
+}
+
+function handleBrowserControlRequested(fromId, fromName) {
+    state.sharedBrowser.pendingControlReqFrom = { id: fromId, name: fromName };
+    if (el.ctrlReqText) {
+        el.ctrlReqText.innerHTML = `<strong>${escapeHtml(fromName)}</strong> ortak tarayıcının yönetim yetkisini devralmak istiyor.`;
+    }
+    if (el.controlRequestModal) {
+        el.controlRequestModal.classList.remove('hidden');
+    }
+}
+
+function grantBrowserControl(accept) {
+    if (el.controlRequestModal) {
+        el.controlRequestModal.classList.add('hidden');
+    }
+    const pending = state.sharedBrowser.pendingControlReqFrom;
+    if (!pending) return;
+
+    if (accept) {
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({
+                type: 'browser-grant-control',
+                target_id: pending.id
+            }));
+        }
+    } else {
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({
+                type: 'browser-deny-control',
+                target_id: pending.id
+            }));
+        }
+    }
+    state.sharedBrowser.pendingControlReqFrom = null;
+}
+
+function handleBrowserSyncPlayer(msg) {
+    if (state.sharedBrowser.controllerId === state.myId) return;
+    if (el.stageVideo && !el.stageVideo.classList.contains('hidden')) {
+        if (Math.abs(el.stageVideo.currentTime - msg.current_time) > 2) {
+            el.stageVideo.currentTime = msg.current_time;
+        }
+        if (msg.is_playing && el.stageVideo.paused) {
+            el.stageVideo.play().catch(e => console.warn(e));
+        } else if (!msg.is_playing && !el.stageVideo.paused) {
+            el.stageVideo.pause();
+        }
+    }
+}
+
+function renderStageSpeakers() {
+    if (!el.stageDockSpeakers) return;
+    el.stageDockSpeakers.innerHTML = '';
+
+    // Kendimiz
+    const myInitial = (state.nickname || 'U').charAt(0).toUpperCase();
+    const myPill = document.createElement('div');
+    myPill.className = `stage-speaker-pill ${state.isSpeaking ? 'speaking' : ''}`;
+    myPill.id = `stage-speaker-${state.myId}`;
+    myPill.innerHTML = `
+        <div class="stage-speaker-avatar" style="background-color: ${state.avatarColor};">${myInitial}</div>
+        <span class="stage-speaker-name">${escapeHtml(state.nickname)} (Sen)</span>
+        <span class="stage-speaker-icons">${state.isMuted ? '🔇' : ''} ${state.isDeafened ? '🎧' : ''}</span>
+    `;
+    el.stageDockSpeakers.appendChild(myPill);
+
+    // Diğer kullanıcılar (aynı ses kanalındakiler)
+    Object.entries(state.allUsers).forEach(([cid, u]) => {
+        if (u.voice_channel === state.voiceChannel) {
+            const init = (u.nickname || 'U').charAt(0).toUpperCase();
+            const pill = document.createElement('div');
+            pill.className = `stage-speaker-pill ${u.is_speaking ? 'speaking' : ''}`;
+            pill.id = `stage-speaker-${cid}`;
+            pill.innerHTML = `
+                <div class="stage-speaker-avatar" style="background-color: ${u.avatar_color || '#5865F2'};">${init}</div>
+                <span class="stage-speaker-name">${escapeHtml(u.nickname)}</span>
+                <span class="stage-speaker-icons">${u.is_muted ? '🔇' : ''} ${u.is_deafened ? '🎧' : ''}</span>
+            `;
+            el.stageDockSpeakers.appendChild(pill);
+        }
+    });
+}
+
+// ============================================================================
 // 10. OLAY DİNLEYİCİLERİ (EVENT LISTENERS)
 // ============================================================================
 function initEventListeners() {
@@ -1937,6 +2426,148 @@ function initEventListeners() {
         } catch (e) {}
         joinRoom(false);
     });
+
+    // Ortak Tarayıcı / Birlikte İzle Başlatma & Kapatma Butonları
+    if (el.btnSharedBrowserToggle) {
+        el.btnSharedBrowserToggle.addEventListener('click', () => {
+            if (state.sharedBrowser.active) {
+                if (state.sharedBrowser.controllerId === state.myId) {
+                    if (confirm("Ortak izleme oturumunu kapatmak istiyor musunuz?")) {
+                        closeSharedBrowser();
+                    }
+                } else {
+                    el.voiceSection.classList.toggle('cinema-active');
+                    el.sharedBrowserStage.classList.toggle('hidden');
+                }
+            } else {
+                openSharedBrowser();
+            }
+        });
+    }
+
+    if (el.btnStageClose) {
+        el.btnStageClose.addEventListener('click', () => {
+            closeSharedBrowser();
+        });
+    }
+
+    // URL Formu Gönderimi
+    if (el.stageUrlForm) {
+        el.stageUrlForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const url = el.stageUrlInput.value.trim();
+            if (url) {
+                submitStageUrl(url);
+            }
+        });
+    }
+
+    // Örnek Chip Kısayolları (Boş Ekrandaki Tıklanabilir Linkler)
+    document.querySelectorAll('.empty-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const sampleUrl = chip.getAttribute('data-url');
+            if (sampleUrl) {
+                if (el.stageUrlInput) el.stageUrlInput.value = sampleUrl;
+                submitStageUrl(sampleUrl);
+            }
+        });
+    });
+
+    // Sekme / Dizi Yayını Paylaşma Butonu (WebRTC Screen Share with Audio)
+    if (el.btnStageShareScreen) {
+        el.btnStageShareScreen.addEventListener('click', () => {
+            if (state.sharedBrowser.screenStream) {
+                stopScreenShare();
+            } else {
+                startScreenShare();
+            }
+        });
+    }
+
+    if (el.btnEmptyStartStream) {
+        el.btnEmptyStartStream.addEventListener('click', () => {
+            if (state.sharedBrowser.active && state.sharedBrowser.controllerId !== state.myId) {
+                requestBrowserControl();
+            } else {
+                if (!state.sharedBrowser.active) {
+                    openSharedBrowser('CANLI_YAYIN', 'stream');
+                }
+                startScreenShare();
+            }
+        });
+    }
+
+    // İzleyici Kontrol İste Butonu
+    if (el.btnStageRequestCtrl) {
+        el.btnStageRequestCtrl.addEventListener('click', () => {
+            requestBrowserControl();
+        });
+    }
+
+    // Tam Ekran Modu Butonu
+    if (el.btnStageFullscreen) {
+        el.btnStageFullscreen.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                if (el.sharedBrowserStage.requestFullscreen) {
+                    el.sharedBrowserStage.requestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        });
+    }
+
+    // Kontrol Talebi Onayla / Reddet Modalı Butonları
+    if (el.btnGrantCtrlRequest) {
+        el.btnGrantCtrlRequest.addEventListener('click', () => {
+            grantBrowserControl(true);
+        });
+    }
+    if (el.btnDenyCtrlRequest) {
+        el.btnDenyCtrlRequest.addEventListener('click', () => {
+            grantBrowserControl(false);
+        });
+    }
+    if (el.controlRequestModal) {
+        el.controlRequestModal.addEventListener('click', (e) => {
+            if (e.target === el.controlRequestModal) {
+                grantBrowserControl(false);
+            }
+        });
+    }
+
+    // Video Player Senkronizasyon Olayları
+    if (el.stageVideo) {
+        el.stageVideo.addEventListener('play', () => {
+            if (state.sharedBrowser.controllerId === state.myId && state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({
+                    type: 'browser-sync-player',
+                    is_playing: true,
+                    current_time: el.stageVideo.currentTime
+                }));
+            }
+        });
+        el.stageVideo.addEventListener('pause', () => {
+            if (state.sharedBrowser.controllerId === state.myId && state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({
+                    type: 'browser-sync-player',
+                    is_playing: false,
+                    current_time: el.stageVideo.currentTime
+                }));
+            }
+        });
+        el.stageVideo.addEventListener('seeked', () => {
+            if (state.sharedBrowser.controllerId === state.myId && state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({
+                    type: 'browser-sync-player',
+                    is_playing: !el.stageVideo.paused,
+                    current_time: el.stageVideo.currentTime
+                }));
+            }
+        });
+    }
 
     // Kayıtlı Oturumu Sıfırlama
     if (el.btnClearSession) {
