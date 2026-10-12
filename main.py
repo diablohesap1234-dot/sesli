@@ -22,8 +22,22 @@ app = FastAPI(title="Özel Sesli & Yazılı Sohbet", version="2.0.0")
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 UPLOADS_DIR = STATIC_DIR / "uploads"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = BASE_DIR / "chat.db"
+
+# Otomatik dosya senkronizasyonu:
+# Eğer index.html, style.css, app.js ana dizinde yer alıyorsa static içine senkronize et
+import shutil
+for _fname in ["index.html", "style.css", "app.js"]:
+    _root_f = BASE_DIR / _fname
+    _static_f = STATIC_DIR / _fname
+    if _root_f.exists() and not _static_f.exists():
+        try:
+            shutil.copy(_root_f, _static_f)
+            logger.info(f"Root static file {_fname} -> static/{_fname} kopyalandı.")
+        except Exception as _e:
+            logger.warning(f"Dosya kopyalama hatası ({_fname}): {_e}")
 
 
 class DatabaseManager:
@@ -304,8 +318,31 @@ async def upload_image(file: UploadFile = File(...)):
 async def get_index():
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
+        index_path = BASE_DIR / "index.html"
+    if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html bulunamadı")
     return FileResponse(index_path)
+
+
+@app.get("/style.css")
+async def get_root_style():
+    p = STATIC_DIR / "style.css" if (STATIC_DIR / "style.css").exists() else BASE_DIR / "style.css"
+    if p.exists():
+        return FileResponse(p, media_type="text/css")
+    raise HTTPException(status_code=404, detail="style.css bulunamadı")
+
+
+@app.get("/app.js")
+async def get_root_app():
+    p = STATIC_DIR / "app.js" if (STATIC_DIR / "app.js").exists() else BASE_DIR / "app.js"
+    if p.exists():
+        return FileResponse(p, media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="app.js bulunamadı")
+
+
+@app.get("/favicon.ico")
+async def get_favicon():
+    return Response(status_code=204)
 
 
 @app.get("/api/room-check/{room_id}")
