@@ -750,6 +750,10 @@ async function joinRoom(isAutoJoin = false) {
     state.voiceChannel = initialChannel;
 
     try {
+        const savedToken = localStorage.getItem('agalar_token');
+        if (!state.token && savedToken) {
+            state.token = savedToken;
+        }
         localStorage.setItem('agalar_nick', nick);
         localStorage.setItem('agalar_room', room);
         localStorage.setItem('agalar_color', state.avatarColor);
@@ -832,7 +836,10 @@ async function joinRoom(isAutoJoin = false) {
         ws.onclose = (event) => {
             console.log("WebSocket kapandı:", event.code, event.reason);
             clearInterval(state.pingInterval);
-            if (event.code === 1008) {
+            if (event.code === 4003 || state.isKicked) {
+                switchToLobbyUI();
+                showError("Sunucudan bir yönetici tarafından çıkarıldınız.");
+            } else if (event.code === 1008) {
                 // Şifre hatası veya oda dolu
                 switchToLobbyUI();
                 showError("Bağlantı reddedildi: Hatalı oda şifresi veya oda dolu!");
@@ -1116,6 +1123,12 @@ function handleServerMessage(msg) {
         case 'kicked':
             // Odadan atıldık
             console.log("Odadan atıldınız:", msg);
+            state.isKicked = true;
+            try { sessionStorage.setItem('agalar_manual_leave', '1'); } catch(e) {}
+            if (state.reconnectTimeoutId) {
+                clearTimeout(state.reconnectTimeoutId);
+                state.reconnectTimeoutId = null;
+            }
             alert(`🚫 Sunucudan Atıldınız!\n\nSebep: ${msg.reason || 'Yönetici tarafından odadan atıldınız.'}`);
             switchToLobbyUI();
             break;
@@ -1123,7 +1136,8 @@ function handleServerMessage(msg) {
         case 'user-permissions-updated':
             // Yetkiler güncellendi
             console.log("Yetki güncellemesi:", msg);
-            if (msg.target_id === state.myId) {
+            const targetPeerId = msg.target_id || msg.client_id;
+            if (targetPeerId === state.myId) {
                 state.myRole = msg.role || state.myRole;
                 state.myPermissions = {
                     can_mute: Boolean(msg.can_mute),
@@ -1134,16 +1148,17 @@ function handleServerMessage(msg) {
                 updateDockUserMeta();
                 alert(`👑 Yetkileriniz güncellendi! Yeni rolünüz: ${getRoleLabel(state.myRole)}`);
             } else {
-                if (state.allUsers[msg.target_id]) {
-                    state.allUsers[msg.target_id].role = msg.role;
-                    state.allUsers[msg.target_id].can_mute = Boolean(msg.can_mute);
-                    state.allUsers[msg.target_id].can_kick = Boolean(msg.can_kick);
-                    state.allUsers[msg.target_id].can_move = Boolean(msg.can_move);
-                    state.allUsers[msg.target_id].can_manage_roles = Boolean(msg.can_manage_roles);
+                if (state.allUsers[targetPeerId]) {
+                    state.allUsers[targetPeerId].role = msg.role;
+                    state.allUsers[targetPeerId].can_mute = Boolean(msg.can_mute);
+                    state.allUsers[targetPeerId].can_kick = Boolean(msg.can_kick);
+                    state.allUsers[targetPeerId].can_move = Boolean(msg.can_move);
+                    state.allUsers[targetPeerId].can_manage_roles = Boolean(msg.can_manage_roles);
                 }
-                updateModModalIfOpen(msg.target_id);
+                updateModModalIfOpen(targetPeerId);
             }
             syncVoiceGrid();
+            renderVoiceChannelsUI();
             break;
 
         case 'user-nickname-changed':
@@ -3531,9 +3546,11 @@ function sendAdminKick(peerId) {
 
 function sendAdminPermissions(peerId, role, canMute, canKick, canMove, canManageRoles) {
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    const user = state.allUsers[peerId];
     state.ws.send(JSON.stringify({
         type: 'admin-set-permissions',
         target_id: peerId,
+        target_user_id: user?.user_id || null,
         role: role,
         can_mute: canMute,
         can_kick: canKick,
@@ -3849,21 +3866,46 @@ function initEventListeners() {
     }
 
     // Avatar Rengi Seçici
-    el.colorPicker.addEventListener('click', (e) => {
-        const swatch = e.target.closest('.color-swatch');
-        if (!swatch) return;
-        el.colorPicker.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
-        swatch.classList.add('active');
-        state.avatarColor = swatch.getAttribute('data-color');
-    });
+    if (el.colorPicker) {
+        el.colorPicker.addEventListener('click', (e) => {
+            const swatch = e.target.closest('.color-swatch');
+            if (!swatch) return;
+            el.colorPicker.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            swatch.classList.add('active');
+            state.avatarColor = swatch.getAttribute('data-color');
+        });
+    }
 
     // Alt Kontrol Butonları
-    el.btnToggleMic.addEventListener('click', toggleMute);
-    el.btnToggleDeafen.addEventListener('click', toggleDeafen);
-    el.btnLeaveRoom.addEventListener('click', switchToLobbyUI);
-    el.btnCopyLink.addEventListener('click', copyInviteLink);
+    if (el.btnToggleMic) el.btnToggleMic.addEventListener('click', toggleMute);
+    if (el.btnToggleDeafen) el.btnToggleDeafen.addEventListener('click', toggleDeafen);
+    if (el.btnLeaveRoom) el.btnLeaveRoom.addEventListener('click', switchToLobbyUI);
+    if (el.btnCopyLink) el.btnCopyLink.addEventListener('click', copyInviteLink);
 
     // Ses Odaları Kanal Seçimi (Sidebar & Mobil Strip)
+    if (el.voiceChannelsList) {
+        el.voiceChannelsList.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-channel-id]') || e.target.closest('[data-channel-wrapper]');
+            if (btn) {
+                const chId = btn.getAttribute('data-channel-id') || btn.getAttribute('data-channel-wrapper');
+                if (chId) {
+                    switchVoiceChannel(chId);
+                    closeMobileChannels();
+                }
+            }
+        });
+    }
+    if (el.stripButtons) {
+        el.stripButtons.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-channel-id]');
+            if (btn) {
+                const chId = btn.getAttribute('data-channel-id');
+                if (chId) {
+                    switchVoiceChannel(chId);
+                }
+            }
+        });
+    }
     document.querySelectorAll('.channel-btn, .strip-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const chId = btn.getAttribute('data-channel-id');
@@ -3875,10 +3917,12 @@ function initEventListeners() {
     });
 
     // Sohbet Formu
-    el.chatForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        sendChatMessage();
-    });
+    if (el.chatForm) {
+        el.chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendChatMessage();
+        });
+    }
 
     // Genel Sohbet Sekmesine Tıklama
     if (el.tabGeneral) {
