@@ -2376,6 +2376,7 @@ function insertEmojiToChat(emoji) {
 // 9. YARDIMCI VE ARAYÜZ FONKSİYONLARI
 // ============================================================================
 function switchToRoomUI() {
+    if (el.splashScreen) el.splashScreen.classList.add('hidden');
     el.lobbyScreen.classList.add('hidden');
     el.roomScreen.classList.remove('hidden');
 
@@ -4273,8 +4274,8 @@ function runSplashScreenAnimation() {
 
     // Ses motoru başlangıç tonunu çal
     setTimeout(() => {
-        SoundEffects.playStartupChime();
-    }, 250);
+        try { SoundEffects.playStartupChime(); } catch(e) {}
+    }, 200);
 
     const steps = [
         { p: 25, t: "👑 AGALAR SESLİ SOHBET..." },
@@ -4292,13 +4293,29 @@ function runSplashScreenAnimation() {
         } else {
             clearInterval(timer);
             setTimeout(() => {
-                el.splashScreen.classList.add('fade-out');
-                setTimeout(() => {
-                    el.splashScreen.classList.add('hidden');
-                }, 600);
-            }, 350);
+                if (el.splashScreen) {
+                    el.splashScreen.classList.add('fade-out');
+                    setTimeout(() => {
+                        el.splashScreen.classList.add('hidden');
+                    }, 400);
+                }
+            }, 250);
         }
-    }, 350);
+    }, 250);
+
+    // Failsafe: Her ihtimale karşı 1.8 saniye sonra kesinlikle gizle
+    setTimeout(() => {
+        clearInterval(timer);
+        if (el.splashScreen && !el.splashScreen.classList.contains('hidden')) {
+            el.splashScreen.classList.add('hidden');
+        }
+    }, 1800);
+
+    // Tıklanırsa beklemeden anında kapat
+    el.splashScreen.onclick = () => {
+        clearInterval(timer);
+        el.splashScreen.classList.add('hidden');
+    };
 }
 
 // ============================================================================
@@ -4368,6 +4385,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.log("⚡ Kayıtlı oturum tespit edildi (" + curNick + "). Odaya katıl butonuna basmaya gerek kalmadan doğrudan ses kanalları ekranı açılıyor...");
 
         // Ekran kırpışmasını önlemek için lobi ekranını hemen gizle ve oda ekranını göster
+        if (el.splashScreen) el.splashScreen.classList.add('hidden');
         el.lobbyScreen.classList.add('hidden');
         el.roomScreen.classList.remove('hidden');
 
