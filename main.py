@@ -832,17 +832,22 @@ async def websocket_endpoint(
                     )
 
             elif msg_type == "browser-open":
-                # Ortak tarayıcı / sinema modunu başlatma
+                # Ortak yayın / sahne modunu başlatma veya yayıncı olarak oturumu üstlenme
                 browser_state = room.setdefault("shared_browser", {})
-                if not browser_state.get("active"):
+                req_mode = message.get("mode", "stream")
+                req_url = message.get("url", "CANLI_YAYIN")
+                req_title = message.get("title", "")
+
+                # Yayın henüz aktif değilse VEYA gelen istek doğrudan stream modundaysa VEYA mevcut yönetici güncelliyorsa
+                if not browser_state.get("active") or req_mode == "stream" or browser_state.get("controller_id") == client_id:
                     browser_state["active"] = True
                     browser_state["controller_id"] = client_id
                     browser_state["controller_name"] = nickname
-                    browser_state["mode"] = message.get("mode", "embed")
-                    browser_state["url"] = message.get("url", "")
+                    browser_state["mode"] = req_mode
+                    browser_state["url"] = req_url
                     browser_state["is_playing"] = False
                     browser_state["current_time"] = 0.0
-                    browser_state["title"] = message.get("title", "")
+                    browser_state["title"] = req_title
 
                     await manager.broadcast_to_room(
                         room_id,
@@ -855,16 +860,16 @@ async def websocket_endpoint(
                         room_id,
                         {
                             "type": "chat-system",
-                            "text": f"🎬 {nickname} ortak tarayıcı / birlikte izleme oturumunu başlattı.",
+                            "text": f"🎬 {nickname} canlı yayın / birlikte izleme oturumunu başlattı.",
                             "timestamp": time.strftime("%H:%M")
                         }
                     )
 
             elif msg_type == "browser-close":
-                # Oturumu sonlandırma
+                # Oturumu sonlandırma - YALNIZCA aktif yayın yöneticisi kapatabilir!
                 browser_state = room.get("shared_browser")
                 if browser_state and browser_state.get("active"):
-                    if browser_state.get("controller_id") == client_id or len(room["participants"]) <= 1:
+                    if browser_state.get("controller_id") == client_id:
                         browser_state["active"] = False
                         browser_state["controller_id"] = None
                         browser_state["controller_name"] = None
@@ -881,7 +886,7 @@ async def websocket_endpoint(
                             room_id,
                             {
                                 "type": "chat-system",
-                                "text": f"🎬 {nickname} ortak tarayıcı oturumunu kapattı.",
+                                "text": f"🎬 {nickname} canlı yayın oturumunu kapattı.",
                                 "timestamp": time.strftime("%H:%M")
                             }
                         )
@@ -992,34 +997,30 @@ async def websocket_endpoint(
                 del rooms[room_id]["participants"][client_id]
                 logger.info(f"User left: {nickname}. Remaining in {room_id}: {len(rooms[room_id]['participants'])}")
 
-                # Eğer ayrılan kişi tarayıcı yöneticisi ise yetkiyi kalan birine devret
+                # Eğer ayrılan kişi canlı yayın yöneticisi ise yayını sonlandır
+                # Normal izleyiciler veya konuşmadan çıkan diğer katılımcılar yayını ASLA kapatamaz!
                 browser_state = room.get("shared_browser")
                 if browser_state and browser_state.get("active") and browser_state.get("controller_id") == client_id:
-                    remaining_cids = list(room["participants"].keys())
-                    if remaining_cids:
-                        new_ctrl_id = remaining_cids[0]
-                        new_ctrl_name = room["participants"][new_ctrl_id]["nickname"]
-                        browser_state["controller_id"] = new_ctrl_id
-                        browser_state["controller_name"] = new_ctrl_name
-                        await manager.broadcast_to_room(
-                            room_id,
-                            {
-                                "type": "browser-state-update",
-                                "state": browser_state
-                            }
-                        )
-                        await manager.broadcast_to_room(
-                            room_id,
-                            {
-                                "type": "chat-system",
-                                "text": f"👑 Önceki yönetici ayrıldığı için ortak tarayıcı kontrolü {new_ctrl_name} kullanıcısına devredildi.",
-                                "timestamp": time.strftime("%H:%M")
-                            }
-                        )
-                    else:
-                        browser_state["active"] = False
-                        browser_state["controller_id"] = None
-                        browser_state["controller_name"] = None
+                    browser_state["active"] = False
+                    browser_state["controller_id"] = None
+                    browser_state["controller_name"] = None
+                    browser_state["url"] = ""
+                    browser_state["mode"] = "embed"
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "browser-state-update",
+                            "state": browser_state
+                        }
+                    )
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "chat-system",
+                            "text": f"🎬 Yayın yöneticisi ({nickname}) ayrıldığı için canlı yayın sonlandırıldı.",
+                            "timestamp": time.strftime("%H:%M")
+                        }
+                    )
 
                 # Notify others
                 await manager.broadcast_to_room(
