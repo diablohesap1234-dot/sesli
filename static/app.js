@@ -81,7 +81,8 @@ const state = {
         can_manage_roles: false
     },
     isServerMuted: false,
-    activeModTargetId: null
+    activeModTargetId: null,
+    isInRoom: false
 };
 
 // WebRTC STUN Configuration
@@ -707,6 +708,8 @@ function setSpeakingState(speaking) {
 // ============================================================================
 function scheduleReconnect() {
     if (sessionStorage.getItem('agalar_manual_leave')) return;
+    if (el.roomScreen && el.roomScreen.classList.contains('hidden')) return;
+    if (!state.token && !state.currentUser) return;
     if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
     if (state.reconnectTimeoutId) return;
 
@@ -720,7 +723,7 @@ function scheduleReconnect() {
 
     state.reconnectTimeoutId = setTimeout(async () => {
         state.reconnectTimeoutId = null;
-        if (!sessionStorage.getItem('agalar_manual_leave') && (!state.ws || state.ws.readyState !== WebSocket.OPEN)) {
+        if (!sessionStorage.getItem('agalar_manual_leave') && el.roomScreen && !el.roomScreen.classList.contains('hidden') && (!state.ws || state.ws.readyState !== WebSocket.OPEN)) {
             try {
                 await joinRoom(true);
             } catch (err) {
@@ -736,9 +739,15 @@ async function joinRoom(isAutoJoin = false) {
         return;
     }
 
-    const nick = el.nicknameInput.value.trim() || 'Misafir';
-    const room = el.roomInput.value.trim() || 'gaming';
-    const pass = el.passwordInput.value.trim();
+    if (!state.token && !state.currentUser) {
+        showGuestAuthView();
+        showError("Sesli sohbet odalarına katılabilmek için lütfen önce giriş yapın veya kayıt olun.");
+        return;
+    }
+
+    const nick = (state.currentUser && state.currentUser.nickname) || state.nickname || (el.nicknameInput ? el.nicknameInput.value.trim() : '') || 'Üye';
+    const room = (el.roomInput && el.roomInput.value.trim()) || 'gaming';
+    const pass = el.passwordInput ? el.passwordInput.value.trim() : '';
     const savedChannel = localStorage.getItem('agalar_channel');
     const initialChannel = (el.selectInitialChannel && el.selectInitialChannel.value) 
         ? el.selectInitialChannel.value 
@@ -748,6 +757,7 @@ async function joinRoom(isAutoJoin = false) {
     state.roomId = room;
     state.password = pass;
     state.voiceChannel = initialChannel;
+    state.isInRoom = true;
 
     try {
         const savedToken = localStorage.getItem('agalar_token');
@@ -836,14 +846,20 @@ async function joinRoom(isAutoJoin = false) {
         ws.onclose = (event) => {
             console.log("WebSocket kapandı:", event.code, event.reason);
             clearInterval(state.pingInterval);
+            state.isInRoom = false;
             if (event.code === 4003 || state.isKicked) {
                 switchToLobbyUI();
                 showError("Sunucudan bir yönetici tarafından çıkarıldınız.");
+            } else if (event.code === 4001) {
+                switchToLobbyUI();
+                showGuestAuthView();
+                showError("Sesli sohbet odalarına katılabilmek için lütfen giriş yapın veya kayıt olun.");
             } else if (event.code === 1008) {
                 // Şifre hatası veya oda dolu
                 switchToLobbyUI();
                 showError("Bağlantı reddedildi: Hatalı oda şifresi veya oda dolu!");
-            } else if (!sessionStorage.getItem('agalar_manual_leave')) {
+            } else if (!sessionStorage.getItem('agalar_manual_leave') && el.roomScreen && !el.roomScreen.classList.contains('hidden')) {
+                state.isInRoom = true;
                 scheduleReconnect();
             }
         };
@@ -2391,6 +2407,7 @@ function insertEmojiToChat(emoji) {
 // 9. YARDIMCI VE ARAYÜZ FONKSİYONLARI
 // ============================================================================
 function switchToRoomUI() {
+    state.isInRoom = true;
     if (el.splashScreen) el.splashScreen.classList.add('hidden');
     el.lobbyScreen.classList.add('hidden');
     el.roomScreen.classList.remove('hidden');
@@ -2538,6 +2555,7 @@ function renderVoiceChannelsUI() {
 }
 
 function switchToLobbyUI() {
+    state.isInRoom = false;
     try {
         sessionStorage.setItem('agalar_manual_leave', '1');
     } catch (e) {}
@@ -3257,6 +3275,10 @@ async function checkSavedAuth() {
 function showGuestAuthView() {
     if (el.authGuestView) el.authGuestView.classList.remove('hidden');
     if (el.authUserView) el.authUserView.classList.add('hidden');
+    if (lobbyPreviewStream) {
+        try { lobbyPreviewStream.getTracks().forEach(t => t.stop()); } catch(e) {}
+        lobbyPreviewStream = null;
+    }
 }
 
 function showLoggedInView(user) {
@@ -3374,6 +3396,7 @@ async function doLogout() {
     state.currentUser = null;
     state.myRole = 'user';
     state.myPermissions = { can_mute: false, can_kick: false, can_move: false, can_manage_roles: false };
+    switchToLobbyUI();
     showGuestAuthView();
 }
 
@@ -3593,14 +3616,6 @@ function initEventListeners() {
         });
     }
 
-    // Hızlı Admin Girişi
-    if (el.btnQuickAdmin) {
-        el.btnQuickAdmin.addEventListener('click', async () => {
-            if (el.authLoginEmail) el.authLoginEmail.value = 'admin@agalar.com';
-            if (el.authLoginPassword) el.authLoginPassword.value = 'admin123';
-            await doLogin('admin@agalar.com', 'admin123');
-        });
-    }
 
     // Kayıt Formu
     if (el.authRegisterForm) {
@@ -4419,38 +4434,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     checkTunnelStatus();
     initDesktopExperience();
 
-    // Otomatik Giriş:
-    // Daha önce giriş yapıldıysa "Odaya Katıl" basmaya gerek kalmadan doğrudan ses kanalları ekranına geç!
-    const isManualLeave = sessionStorage.getItem('agalar_manual_leave') === '1';
-    const hasPreviousSession = Boolean(state.token || localStorage.getItem('agalar_logged_in') === '1');
-
-    if (hasPreviousSession && !isManualLeave) {
-        const curNick = state.nickname || el.nicknameInput.value.trim() || 'Misafir';
-        console.log("⚡ Kayıtlı oturum tespit edildi (" + curNick + "). Odaya katıl butonuna basmaya gerek kalmadan doğrudan ses kanalları ekranı açılıyor...");
-
-        // Ekran kırpışmasını önlemek için lobi ekranını hemen gizle ve oda ekranını göster
-        if (el.splashScreen) el.splashScreen.classList.add('hidden');
-        el.lobbyScreen.classList.add('hidden');
-        el.roomScreen.classList.remove('hidden');
-
-        const nick = curNick;
-        const room = el.roomInput.value.trim() || 'gaming';
-        const ch = (el.selectInitialChannel && el.selectInitialChannel.value) || savedChannel || 'channel-1';
-        state.nickname = nick;
-        state.roomId = room;
-        state.voiceChannel = ch;
-
-        if (el.currentRoomName) {
-            el.currentRoomName.textContent = `${room} • ${state.channelNames[ch] || 'Ses Odası 1'}`;
-        }
-        updateDockUserMeta();
-        renderVoiceChannelsUI();
-
-        // Odaya ve ses kanallarına arka planda anında bağlan
-        joinRoom(true);
-    } else {
-        // Lobide kalındıysa mikrofon önizlemesini ve test çubuğunu başlat
+    // Otomatik Giriş engellendi: Kullanıcı mutlaka lobide başlangıç ses odasını seçip "Odaya Katıl" butonuna basmalıdır.
+    // Oturum açıksa kullanıcı profilini ve oda seçim formunu göster; açık değilse sadece Giriş/Kayıt ekranını göster.
+    if (isAuthenticated) {
+        showLoggedInView(state.currentUser);
         initLobbyMicrophonePreview();
+    } else {
+        showGuestAuthView();
     }
 
     // Service Worker Kaydı (PWA & Çevrimdışı Önbellek)
@@ -4468,7 +4458,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 // ============================================================================
 window.addEventListener('online', () => {
     console.log("[Network] İnternet bağlantısı yeniden kuruldu (online).");
-    if (!sessionStorage.getItem('agalar_manual_leave') && (!state.ws || state.ws.readyState !== WebSocket.OPEN)) {
+    if (!sessionStorage.getItem('agalar_manual_leave') && el.roomScreen && !el.roomScreen.classList.contains('hidden') && (!state.ws || state.ws.readyState !== WebSocket.OPEN)) {
         state.reconnectAttempts = 0;
         if (state.reconnectTimeoutId) {
             clearTimeout(state.reconnectTimeoutId);
@@ -4484,7 +4474,7 @@ document.addEventListener('visibilitychange', () => {
         if (state.audioCtx && state.audioCtx.state === 'suspended') {
             state.audioCtx.resume().catch(() => {});
         }
-        if (!sessionStorage.getItem('agalar_manual_leave')) {
+        if (!sessionStorage.getItem('agalar_manual_leave') && el.roomScreen && !el.roomScreen.classList.contains('hidden')) {
             if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
                 console.log("[Visibility] WebSocket kapalı, anında yeniden bağlanılıyor...");
                 state.reconnectAttempts = 0;
