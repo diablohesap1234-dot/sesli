@@ -268,6 +268,11 @@ const el = {
     overlayVolSlider: document.getElementById('overlay-vol-slider'),
     overlayVolLabel: document.getElementById('overlay-vol-label'),
     btnOverlayFullscreen: document.getElementById('btn-overlay-fullscreen'),
+    btnStageLayoutToggle: document.getElementById('btn-stage-layout-toggle'),
+    stageLayoutIcon: document.getElementById('stage-layout-icon'),
+    stageLayoutText: document.getElementById('stage-layout-text'),
+    btnOverlayLayoutToggle: document.getElementById('btn-overlay-layout-toggle'),
+    overlayLayoutIcon: document.getElementById('overlay-layout-icon'),
 
     // Kontrol Talep Modalı
     controlRequestModal: document.getElementById('control-request-modal'),
@@ -1708,7 +1713,12 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
 
     card.innerHTML = `
         <div class="user-card-actions">
-            ${canMod ? `<button type="button" class="btn-user-manage" data-user-id="${userId}" title="Kullanıcıyı Yönet">⚙️ Yönet</button>` : ''}
+            ${canMod ? `
+                <button type="button" class="btn-card-quick-mute ${isServerMuted ? 'active-muted' : ''}" data-user-id="${userId}" title="${isServerMuted ? 'Susturmayı Kaldır' : 'Mikrofonu Sunucu Genelinde Sustur'}">
+                    ${isServerMuted ? '🔊 Susturmayı Aç' : '🔇 Sustur'}
+                </button>
+                <button type="button" class="btn-user-manage" data-user-id="${userId}" title="Kullanıcıyı Yönet">⚙️ Yönet</button>
+            ` : ''}
         </div>
         <div class="card-badges">
             <div class="card-badge-icon muted ${isMuted ? '' : 'hidden'}" id="badge-mute-${userId}" title="Mikrofon Kapalı">🔇</div>
@@ -1743,8 +1753,17 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
         </div>
     `;
 
-    // Yönet Butonu Dinleyicisi
+    // Hızlı Susturma ve Yönet Butonu Dinleyicileri
     if (canMod) {
+        const btnQuickMute = card.querySelector('.btn-card-quick-mute');
+        if (btnQuickMute) {
+            btnQuickMute.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const user = state.allUsers[userId];
+                const currentMute = user ? Boolean(user.is_server_muted) : false;
+                sendAdminMute(userId, !currentMute);
+            });
+        }
         const btnManage = card.querySelector('.btn-user-manage');
         if (btnManage) {
             btnManage.addEventListener('click', (e) => {
@@ -2898,6 +2917,22 @@ function closeSharedBrowser() {
     }));
 }
 
+function toggleStageLayout() {
+    if (!el.voiceSection) return;
+    const isMinimized = el.voiceSection.classList.toggle('stage-minimized');
+    const icon = isMinimized ? '🗖' : '🗗';
+    const text = isMinimized ? 'Yayını Büyüt' : 'Üyeleri Göster';
+
+    if (el.stageLayoutIcon) el.stageLayoutIcon.textContent = icon;
+    if (el.stageLayoutText) el.stageLayoutText.textContent = text;
+    if (el.overlayLayoutIcon) el.overlayLayoutIcon.textContent = icon;
+
+    if (el.btnStageLayoutToggle) {
+        el.btnStageLayoutToggle.classList.toggle('active-layout', isMinimized);
+        el.btnStageLayoutToggle.title = isMinimized ? 'Tam Sinema Moduna Büyüt' : 'Yayını Küçültüp Üyeleri ve Ses Ayarlarını Göster';
+    }
+}
+
 function handleBrowserStateUpdate(bState) {
     if (!bState) return;
     state.sharedBrowser.active = !!bState.active;
@@ -2954,7 +2989,14 @@ function handleBrowserStateUpdate(bState) {
         renderStageSpeakers();
     } else {
         // Canlı yayın sahnesini kapat
-        if (el.voiceSection) el.voiceSection.classList.remove('cinema-active');
+        if (el.voiceSection) {
+            el.voiceSection.classList.remove('cinema-active');
+            el.voiceSection.classList.remove('stage-minimized');
+        }
+        if (el.stageLayoutIcon) el.stageLayoutIcon.textContent = '🗗';
+        if (el.stageLayoutText) el.stageLayoutText.textContent = 'Üyeleri Göster';
+        if (el.overlayLayoutIcon) el.overlayLayoutIcon.textContent = '🗗';
+        if (el.btnStageLayoutToggle) el.btnStageLayoutToggle.classList.remove('active-layout');
         if (el.sharedBrowserStage) el.sharedBrowserStage.classList.add('hidden');
         if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.remove('active');
 
@@ -3842,6 +3884,14 @@ function initEventListeners() {
         el.btnOverlayFullscreen.addEventListener('click', toggleFullscreen);
     }
 
+    // Yayını Küçültme / Büyütme (Üye Kartlarını ve Ses Ayarlarını Göster / Gizle)
+    if (el.btnStageLayoutToggle) {
+        el.btnStageLayoutToggle.addEventListener('click', toggleStageLayout);
+    }
+    if (el.btnOverlayLayoutToggle) {
+        el.btnOverlayLayoutToggle.addEventListener('click', toggleStageLayout);
+    }
+
     // Kontrol Talebi Onayla / Reddet Modalı Butonları
     if (el.btnGrantCtrlRequest) {
         el.btnGrantCtrlRequest.addEventListener('click', () => {
@@ -3964,34 +4014,38 @@ function initEventListeners() {
     }
 
     // Görsel Yapıştırma (Ctrl+V) Desteği
-    el.chatInput.addEventListener('paste', (e) => {
-        const items = (e.clipboardData || window.clipboardData)?.items;
-        if (!items) return;
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf('image') !== -1) {
-                const blob = items[i].getAsFile();
-                if (blob) {
-                    stageImage(blob);
-                    e.preventDefault();
-                    break;
+    if (el.chatInput) {
+        el.chatInput.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || window.clipboardData)?.items;
+            if (!items) return;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    if (blob) {
+                        stageImage(blob);
+                        e.preventDefault();
+                        break;
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     // Görsel Sürükle-Bırak (Drag & Drop) Desteği
-    el.chatSection.addEventListener('dragover', (e) => {
-        e.preventDefault();
-    });
-    el.chatSection.addEventListener('drop', (e) => {
-        e.preventDefault();
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            const file = e.dataTransfer.files[0];
-            if (file.type.startsWith('image/')) {
-                stageImage(file);
+    if (el.chatSection) {
+        el.chatSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+        el.chatSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                if (file.type.startsWith('image/')) {
+                    stageImage(file);
+                }
             }
-        }
-    });
+        });
+    }
 
     // Lightbox Kapatma Dinleyicileri
     if (el.btnCloseLightbox) {
@@ -4034,65 +4088,85 @@ function initEventListeners() {
     }
 
     // Sohbet Paneli Aç / Kapat (Desktop & Mobil Uyumlu)
-    el.btnChatToggle.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
-            if (el.chatSection && el.chatSection.classList.contains('chat-open')) {
-                closeMobileChat();
-                el.btnChatToggle.classList.remove('active');
+    if (el.btnChatToggle) {
+        el.btnChatToggle.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                if (el.chatSection && el.chatSection.classList.contains('chat-open')) {
+                    closeMobileChat();
+                    el.btnChatToggle.classList.remove('active');
+                } else {
+                    openMobileChat();
+                }
             } else {
-                openMobileChat();
+                if (el.chatSection) {
+                    el.chatSection.classList.toggle('hidden');
+                    el.btnChatToggle.classList.toggle('active');
+                    if (!el.chatSection.classList.contains('hidden')) {
+                        if (el.dockChatUnreadDot) el.dockChatUnreadDot.classList.add('hidden');
+                        if (el.mobileChatUnreadDot) el.mobileChatUnreadDot.classList.add('hidden');
+                    }
+                }
             }
-        } else {
-            el.chatSection.classList.toggle('hidden');
-            el.btnChatToggle.classList.toggle('active');
-            if (!el.chatSection.classList.contains('hidden')) {
-                if (el.dockChatUnreadDot) el.dockChatUnreadDot.classList.add('hidden');
-                if (el.mobileChatUnreadDot) el.mobileChatUnreadDot.classList.add('hidden');
-            }
-        }
-    });
+        });
+    }
 
     // Konuşma Modu Hızlı Değiştirme
-    el.btnPttMode.addEventListener('click', () => {
-        const nextMode = state.inputMode === 'vad' ? 'ptt' : 'vad';
-        setInputMode(nextMode);
-        el.selectInputMode.value = nextMode;
-    });
+    if (el.btnPttMode) {
+        el.btnPttMode.addEventListener('click', () => {
+            const nextMode = state.inputMode === 'vad' ? 'ptt' : 'vad';
+            setInputMode(nextMode);
+            if (el.selectInputMode) el.selectInputMode.value = nextMode;
+        });
+    }
 
     // Ayarlar Modalı
-    el.btnSettingsToggle.addEventListener('click', () => {
-        el.settingsModal.classList.remove('hidden');
-    });
-    el.btnCloseSettings.addEventListener('click', () => {
-        el.settingsModal.classList.add('hidden');
-    });
-    el.settingsModal.addEventListener('click', (e) => {
-        if (e.target === el.settingsModal) el.settingsModal.classList.add('hidden');
-    });
+    if (el.btnSettingsToggle) {
+        el.btnSettingsToggle.addEventListener('click', () => {
+            if (el.settingsModal) el.settingsModal.classList.remove('hidden');
+        });
+    }
+    if (el.btnCloseSettings) {
+        el.btnCloseSettings.addEventListener('click', () => {
+            if (el.settingsModal) el.settingsModal.classList.add('hidden');
+        });
+    }
+    if (el.settingsModal) {
+        el.settingsModal.addEventListener('click', (e) => {
+            if (e.target === el.settingsModal) el.settingsModal.classList.add('hidden');
+        });
+    }
 
     // Ayarlar Kontrolleri
-    el.selectInputMode.addEventListener('change', (e) => {
-        setInputMode(e.target.value);
-    });
+    if (el.selectInputMode) {
+        el.selectInputMode.addEventListener('change', (e) => {
+            setInputMode(e.target.value);
+        });
+    }
 
-    el.sliderMicThreshold.addEventListener('input', (e) => {
-        state.vadThreshold = parseInt(e.target.value);
-        el.thresholdVal.textContent = `${state.vadThreshold}%`;
-    });
+    if (el.sliderMicThreshold) {
+        el.sliderMicThreshold.addEventListener('input', (e) => {
+            state.vadThreshold = parseInt(e.target.value);
+            if (el.thresholdVal) el.thresholdVal.textContent = `${state.vadThreshold}%`;
+        });
+    }
 
-    el.selectMicDevice.addEventListener('change', (e) => {
-        setupLocalAudioStream(e.target.value);
-    });
+    if (el.selectMicDevice) {
+        el.selectMicDevice.addEventListener('change', (e) => {
+            setupLocalAudioStream(e.target.value);
+        });
+    }
 
-    el.chkEcho.addEventListener('change', () => setupLocalAudioStream());
-    el.chkNoise.addEventListener('change', () => setupLocalAudioStream());
+    if (el.chkEcho) el.chkEcho.addEventListener('change', () => setupLocalAudioStream());
+    if (el.chkNoise) el.chkNoise.addEventListener('change', () => setupLocalAudioStream());
 
     // Bas-Konuş Tuş Değiştirme
     let listeningForPttKey = false;
-    el.btnChangePttKey.addEventListener('click', () => {
-        listeningForPttKey = true;
-        el.btnChangePttKey.textContent = "Bir tuşa basın...";
-    });
+    if (el.btnChangePttKey) {
+        el.btnChangePttKey.addEventListener('click', () => {
+            listeningForPttKey = true;
+            el.btnChangePttKey.textContent = "Bir tuşa basın...";
+        });
+    }
 
     // Klavye Kısayolları (M: Mute, D: Deafen, Space: Bas-Konuş)
     window.addEventListener('keydown', (e) => {
