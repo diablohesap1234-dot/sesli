@@ -350,6 +350,11 @@
                             </div>
 
                             <div class="stage-topbar-right">
+                                <div class="stage-stream-volume-wrap" id="stage-stream-volume-wrap" title="Yayın Sesi">
+                                    <button type="button" id="btn-stage-vol-mute" class="btn-stage-icon" title="Yayın Sesini Kapat/Aç">🔊</button>
+                                    <input type="range" id="stage-vol-slider" class="stage-vol-slider" min="0" max="100" value="100" title="Yayın Sesi">
+                                    <span id="stage-vol-label" class="stage-vol-label">100%</span>
+                                </div>
                                 <button type="button" id="btn-stage-share-screen" class="btn-stage-pill btn-stage-stream-toggle" title="Dizi Sekmesini veya Ekranı Sesli Paylaş (WebRTC Canlı Yayın)">
                                     🖥️ Yayını Başlat
                                 </button>
@@ -359,7 +364,7 @@
                                 <button type="button" id="btn-stage-fullscreen" class="btn-stage-icon" title="Tam Ekran Modu">
                                     ⛶
                                 </button>
-                                <button type="button" id="btn-stage-close" class="btn-stage-icon btn-stage-close" title="Yayını Kapat">
+                                <button type="button" id="btn-stage-close" class="btn-stage-icon btn-stage-close" style="display: none;" title="Yayını Kapat">
                                     ✕
                                 </button>
                             </div>
@@ -388,9 +393,9 @@
                                 </div>
                             </div>
 
-                            <!-- WebRTC Sekme / Dizi Canlı Yayını -->
+                            <!-- WebRTC Sekme / Dizi Canlı Yayını (Paylaşan kişide yankı olmaması için muted başlar) -->
                             <div id="stage-stream-wrap" class="stage-media-item hidden">
-                                <video id="stage-stream-video" autoplay playsinline></video>
+                                <video id="stage-stream-video" autoplay playsinline muted></video>
                                 <div class="live-stream-badge">🔴 CANLI DİZİ & EKRAN YAYINI</div>
                             </div>
                         </div>
