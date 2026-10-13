@@ -273,6 +273,8 @@ const el = {
     stageLayoutText: document.getElementById('stage-layout-text'),
     btnOverlayLayoutToggle: document.getElementById('btn-overlay-layout-toggle'),
     overlayLayoutIcon: document.getElementById('overlay-layout-icon'),
+    overlayLayoutText: document.getElementById('overlay-layout-text'),
+    btnFloatingStageExpand: document.getElementById('btn-floating-stage-expand'),
 
     // Kontrol Talep Modalı
     controlRequestModal: document.getElementById('control-request-modal'),
@@ -2926,10 +2928,24 @@ function toggleStageLayout() {
     if (el.stageLayoutIcon) el.stageLayoutIcon.textContent = icon;
     if (el.stageLayoutText) el.stageLayoutText.textContent = text;
     if (el.overlayLayoutIcon) el.overlayLayoutIcon.textContent = icon;
+    if (el.overlayLayoutText) el.overlayLayoutText.textContent = text;
 
     if (el.btnStageLayoutToggle) {
         el.btnStageLayoutToggle.classList.toggle('active-layout', isMinimized);
         el.btnStageLayoutToggle.title = isMinimized ? 'Tam Sinema Moduna Büyüt' : 'Yayını Küçültüp Üyeleri ve Ses Ayarlarını Göster';
+    }
+    if (el.btnOverlayLayoutToggle) {
+        el.btnOverlayLayoutToggle.classList.toggle('active-layout', isMinimized);
+        el.btnOverlayLayoutToggle.title = isMinimized ? 'Tam Sinema Moduna Büyüt' : 'Yayını Küçült / Üyeleri Göster';
+    }
+
+    // 3+ kişi olduğunda veya aşağı kaydırıldığında daima tıklanabilir yüzen buton
+    if (el.btnFloatingStageExpand) {
+        if (isMinimized && state.sharedBrowser && state.sharedBrowser.active) {
+            el.btnFloatingStageExpand.classList.remove('hidden');
+        } else {
+            el.btnFloatingStageExpand.classList.add('hidden');
+        }
     }
 }
 
@@ -2996,7 +3012,10 @@ function handleBrowserStateUpdate(bState) {
         if (el.stageLayoutIcon) el.stageLayoutIcon.textContent = '🗗';
         if (el.stageLayoutText) el.stageLayoutText.textContent = 'Üyeleri Göster';
         if (el.overlayLayoutIcon) el.overlayLayoutIcon.textContent = '🗗';
+        if (el.overlayLayoutText) el.overlayLayoutText.textContent = 'Üyeleri Göster';
         if (el.btnStageLayoutToggle) el.btnStageLayoutToggle.classList.remove('active-layout');
+        if (el.btnOverlayLayoutToggle) el.btnOverlayLayoutToggle.classList.remove('active-layout');
+        if (el.btnFloatingStageExpand) el.btnFloatingStageExpand.classList.add('hidden');
         if (el.sharedBrowserStage) el.sharedBrowserStage.classList.add('hidden');
         if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.remove('active');
 
@@ -3890,6 +3909,9 @@ function initEventListeners() {
     }
     if (el.btnOverlayLayoutToggle) {
         el.btnOverlayLayoutToggle.addEventListener('click', toggleStageLayout);
+    }
+    if (el.btnFloatingStageExpand) {
+        el.btnFloatingStageExpand.addEventListener('click', toggleStageLayout);
     }
 
     // Kontrol Talebi Onayla / Reddet Modalı Butonları

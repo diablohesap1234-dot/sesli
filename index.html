@@ -467,8 +467,9 @@
                                             <span id="overlay-vol-label" class="overlay-vol-label">100%</span>
                                         </div>
                                         <!-- Yayını Küçült / Büyüt Butonu -->
-                                        <button type="button" id="btn-overlay-layout-toggle" class="btn-overlay-action" title="Yayını Küçült / Üyeleri Göster">
+                                        <button type="button" id="btn-overlay-layout-toggle" class="btn-overlay-action btn-overlay-layout" title="Yayını Küçült / Üyeleri Göster">
                                             <span id="overlay-layout-icon">🗗</span>
+                                            <span id="overlay-layout-text" class="overlay-layout-text">Üyeleri Göster</span>
                                         </button>
                                         <!-- Tam Ekran Butonu -->
                                         <button type="button" id="btn-overlay-fullscreen" class="btn-overlay-action" title="Tam Ekran Modu">
@@ -491,6 +492,12 @@
                     <div class="voice-grid" id="voice-grid">
                         <!-- Kullanıcı kartları buraya JavaScript tarafından dinamik eklenecek -->
                     </div>
+
+                    <!-- KÜÇÜLTÜLMÜŞ YAYINDA HER ZAMAN GÖRÜNÜR FLOATING GENİŞLETME BUTONU -->
+                    <button type="button" id="btn-floating-stage-expand" class="floating-stage-expand-btn hidden" title="Yayını Tam Sinema Moduna Büyüt">
+                        <span class="floating-expand-icon">🗖</span>
+                        <span class="floating-expand-text">Yayını Büyüt (Sinema Modu)</span>
+                    </button>
                 </section>
 
                 <!-- SAĞ ALAN: YAZILI SOHBET (GENEL & DM KANALLARI) -->
