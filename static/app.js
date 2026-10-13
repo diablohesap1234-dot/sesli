@@ -238,6 +238,10 @@ const el = {
     btnEmptyStartStream: document.getElementById('btn-empty-start-stream'),
     stageStreamWrap: document.getElementById('stage-stream-wrap'),
     stageStreamVideo: document.getElementById('stage-stream-video'),
+    stageStreamVolumeWrap: document.getElementById('stage-stream-volume-wrap'),
+    btnStageVolMute: document.getElementById('btn-stage-vol-mute'),
+    stageVolSlider: document.getElementById('stage-vol-slider'),
+    stageVolLabel: document.getElementById('stage-vol-label'),
     stageDockStrip: document.getElementById('stage-dock-strip'),
     stageDockSpeakers: document.getElementById('stage-dock-speakers'),
 
@@ -1060,6 +1064,23 @@ function createPeerConnection(peerId, isInitiator) {
             const remoteVideoStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
             if (el.stageStreamVideo) {
                 el.stageStreamVideo.srcObject = remoteVideoStream;
+                // Ekranı paylaşan kişi BİZ DEĞİLSEK (yani izleyiciysek) sesi aç, BİZ İSEK kesinlikle sessiz kal
+                const isSharingSelf = Boolean(state.sharedBrowser.screenStream);
+                if (!isSharingSelf) {
+                    el.stageStreamVideo.muted = false;
+                    el.stageStreamVideo.volume = 1.0;
+                    if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.remove('streamer-mode');
+                    if (el.stageVolSlider) el.stageVolSlider.disabled = false;
+                    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔊';
+                    if (el.stageVolLabel) el.stageVolLabel.textContent = '100%';
+                } else {
+                    el.stageStreamVideo.muted = true;
+                    el.stageStreamVideo.volume = 0;
+                    if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.add('streamer-mode');
+                    if (el.stageVolSlider) el.stageVolSlider.disabled = true;
+                    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔇';
+                    if (el.stageVolLabel) el.stageVolLabel.textContent = 'Kendi Yayının (Sessiz)';
+                }
                 el.stageStreamVideo.play().catch(e => console.warn("Stream video play error:", e));
             }
 
@@ -1071,14 +1092,26 @@ function createPeerConnection(peerId, isInitiator) {
             if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.add('active');
 
             event.track.onended = () => {
-                if (el.stageStreamVideo) el.stageStreamVideo.srcObject = null;
+                if (el.stageStreamVideo) {
+                    el.stageStreamVideo.srcObject = null;
+                    el.stageStreamVideo.muted = true;
+                }
                 if (el.stageStreamWrap) el.stageStreamWrap.classList.add('hidden');
                 if (el.stageEmptyView) el.stageEmptyView.classList.remove('hidden');
             };
             return;
         }
 
-        console.log(`[WebRTC] ${peerId} ses akışı başarıyla alındı:`, event);
+        // SES İŞLEME (Ekran/Dizi Yayını Sesi ile Normal Mikrofon Sesini Ayırma)
+        const isScreenAudio = (event.streams && event.streams[0] && event.streams[0].getVideoTracks().length > 0);
+        if (isScreenAudio) {
+            console.log(`[WebRTC] ${peerId} ekran/dizi ses track'i alındı (stageStreamVideo üzerinden çalınıyor).`);
+            // Bu ses dizi/ekran yayınına aittir. Sahnedeki video oynatıcı (stageStreamVideo) bunu izleyicilere zaten çalar.
+            // Mikrofon audio elementine (audioEl) EKLENMEZ; aksi halde çift ses/yankı olur ve avatarda yanlış yeşil halka yanar.
+            return;
+        }
+
+        console.log(`[WebRTC] ${peerId} mikrofon ses akışı başarıyla alındı:`, event);
         if (event.streams && event.streams[0]) {
             if (audioEl.srcObject && audioEl.srcObject !== event.streams[0]) {
                 try {
@@ -1109,7 +1142,7 @@ function createPeerConnection(peerId, isInitiator) {
             });
         }
 
-        // Arkadaşın ses seviyesini analiz ederek konuştuğunda yeşil halkayı tetikle
+        // Arkadaşın mikrofon ses seviyesini analiz ederek konuştuğunda yeşil halkayı tetikle
         monitorRemoteStreamVolume(peerId, remoteStream);
     };
 
@@ -2525,6 +2558,15 @@ function updateStageMediaView(url, mode) {
 
     if (isStreaming) {
         if (el.stageStreamWrap) el.stageStreamWrap.classList.remove('hidden');
+        // Eğer yayını paylaşan biz isek sahnedeki video kesinlikle sessiz kalmalıdır (çift sesi önler)
+        if (state.sharedBrowser.screenStream && el.stageStreamVideo) {
+            el.stageStreamVideo.muted = true;
+            el.stageStreamVideo.volume = 0;
+            if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.add('streamer-mode');
+            if (el.stageVolSlider) el.stageVolSlider.disabled = true;
+            if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔇';
+            if (el.stageVolLabel) el.stageVolLabel.textContent = 'Kendi Yayının (Sessiz)';
+        }
     } else {
         if (el.stageEmptyView) el.stageEmptyView.classList.remove('hidden');
     }
@@ -2546,11 +2588,22 @@ async function startScreenShare() {
 
         state.sharedBrowser.screenStream = stream;
 
-        // Kendi önizlememiz
+        // Kendi önizlememiz - PAYLAŞAN KİŞİ KENDİ SESİNİ ASLA CHAT KANALINDAN DUYMAMALI
         if (el.stageStreamVideo) {
             el.stageStreamVideo.srcObject = stream;
+            el.stageStreamVideo.muted = true;
+            el.stageStreamVideo.defaultMuted = true;
+            el.stageStreamVideo.volume = 0;
             el.stageStreamVideo.play().catch(e => console.warn(e));
         }
+
+        if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.add('streamer-mode');
+        if (el.stageVolSlider) el.stageVolSlider.disabled = true;
+        if (el.btnStageVolMute) {
+            el.btnStageVolMute.textContent = '🔇';
+            el.btnStageVolMute.title = 'Kendi yayınınız - Yankıyı önlemek için kanal sesi otomatik kapalıdır';
+        }
+        if (el.stageVolLabel) el.stageVolLabel.textContent = 'Kendi Yayının (Sessiz)';
 
         // WebRTC üzerinden diğer kullanıcılara video ve sekme sesi track'lerini ekle ve yeni offer gönder
         const videoTrack = stream.getVideoTracks()[0];
@@ -2611,15 +2664,25 @@ function stopScreenShare() {
         state.sharedBrowser.screenStream = null;
     }
     if (el.stageStreamVideo) {
+        el.stageStreamVideo.pause();
         el.stageStreamVideo.srcObject = null;
+        el.stageStreamVideo.muted = true;
     }
-    // WebRTC peer bağlantılarından video sender'ları temizle ve güncelle
+    if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.remove('streamer-mode');
+    if (el.stageVolSlider) el.stageVolSlider.disabled = false;
+    if (el.stageVolLabel) el.stageVolLabel.textContent = '100%';
+    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔊';
+
+    // WebRTC peer bağlantılarından video ve ekran sesi sender'larını temizle ve güncelle
+    const localMicTrack = state.localStream?.getAudioTracks()[0];
     Object.entries(state.peers).forEach(async ([peerId, peer]) => {
         try {
             const senders = peer.pc.getSenders();
             senders.forEach(sender => {
-                if (sender.track && sender.track.kind === 'video') {
-                    peer.pc.removeTrack(sender);
+                if (sender.track) {
+                    if (sender.track.kind === 'video' || (sender.track.kind === 'audio' && sender.track !== localMicTrack)) {
+                        peer.pc.removeTrack(sender);
+                    }
                 }
             });
             const offer = await peer.pc.createOffer();
@@ -2783,6 +2846,41 @@ function initEventListeners() {
     }
 
 
+
+    // Sahne Yayın Sesi Kontrolleri (İzleyiciler için ses ayarı, yayıncı için yankı önleme)
+    if (el.stageVolSlider) {
+        el.stageVolSlider.addEventListener('input', (e) => {
+            if (state.sharedBrowser.screenStream) return; // Yayın yapan kişi kendi sesini açamaz (yankı önleme)
+            const val = parseInt(e.target.value);
+            if (el.stageStreamVideo) {
+                el.stageStreamVideo.volume = val / 100;
+                if (val === 0) {
+                    el.stageStreamVideo.muted = true;
+                    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔇';
+                } else {
+                    el.stageStreamVideo.muted = false;
+                    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔊';
+                }
+            }
+            if (el.stageVolLabel) el.stageVolLabel.textContent = `${val}%`;
+        });
+    }
+
+    if (el.btnStageVolMute) {
+        el.btnStageVolMute.addEventListener('click', () => {
+            if (state.sharedBrowser.screenStream) return; // Yayın yapan kişi kendi sesini açamaz
+            if (!el.stageStreamVideo) return;
+            el.stageStreamVideo.muted = !el.stageStreamVideo.muted;
+            if (el.stageStreamVideo.muted) {
+                el.btnStageVolMute.textContent = '🔇';
+                if (el.stageVolLabel) el.stageVolLabel.textContent = '0%';
+            } else {
+                el.btnStageVolMute.textContent = '🔊';
+                const val = el.stageVolSlider ? parseInt(el.stageVolSlider.value) : 100;
+                if (el.stageVolLabel) el.stageVolLabel.textContent = `${val}%`;
+            }
+        });
+    }
 
     // Sekme / Dizi Yayını Paylaşma Butonu (WebRTC Screen Share with Audio)
     if (el.btnStageShareScreen) {
