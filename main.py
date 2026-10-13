@@ -325,14 +325,14 @@ class DatabaseManager:
             conn.commit()
             return self.get_user_by_id(user_id)
 
-    def update_permissions(self, target_user_id: int, can_mute: bool, can_kick: bool, can_move: bool, role: Optional[str] = None) -> Optional[dict]:
+    def update_permissions(self, target_user_id: int, can_mute: bool, can_kick: bool, can_move: bool, role: Optional[str] = None, can_manage_roles: bool = False) -> Optional[dict]:
         with sqlite3.connect(self.db_path) as conn:
-            role_val = role if role else ("moderator" if (can_mute or can_kick or can_move) else "user")
+            role_val = role if role else ("admin" if can_manage_roles else ("moderator" if (can_mute or can_kick or can_move) else "user"))
             conn.execute("""
                 UPDATE users
-                SET can_mute = ?, can_kick = ?, can_move = ?, role = CASE WHEN role = 'admin' THEN 'admin' ELSE ? END
+                SET can_mute = ?, can_kick = ?, can_move = ?, can_manage_roles = ?, role = CASE WHEN role = 'admin' AND ? != 'user' THEN 'admin' ELSE ? END
                 WHERE id = ?
-            """, (1 if can_mute else 0, 1 if can_kick else 0, 1 if can_move else 0, role_val, target_user_id))
+            """, (1 if can_mute else 0, 1 if can_kick else 0, 1 if can_move else 0, 1 if can_manage_roles else 0, role_val, role_val, target_user_id))
             conn.commit()
             return self.get_user_by_id(target_user_id)
 
@@ -980,11 +980,13 @@ async def websocket_endpoint(
         can_manage_roles = bool(auth_user["can_manage_roles"])
     else:
         user_id = None
-        role = "user"
-        can_mute = False
-        can_kick = False
-        can_move = False
-        can_manage_roles = False
+        # Odaya ilk giren kişi (oda kurucusu) ise oda içi tam moderatör yetkisi ver
+        is_first_in_room = (len(room["participants"]) == 0)
+        role = "admin" if is_first_in_room else "user"
+        can_mute = is_first_in_room
+        can_kick = is_first_in_room
+        can_move = is_first_in_room
+        can_manage_roles = is_first_in_room
 
     # Room password validation
     if room["password"] is not None and len(room["participants"]) > 0:
@@ -1332,9 +1334,18 @@ async def websocket_endpoint(
                                         "reason": reason,
                                         "by_name": nickname
                                     }))
-                                    await target_ws.close(code=1000)
+                                    await target_ws.close(code=4003)
                                 except Exception:
                                     pass
+                            # Katılımcıyı odadan hemen düşür ve odadaki diğerlerine bildir
+                            room["participants"].pop(target_id, None)
+                            await manager.broadcast_to_room(
+                                room_id,
+                                {
+                                    "type": "user-left",
+                                    "client_id": target_id
+                                }
+                            )
                             await manager.broadcast_to_room(
                                 room_id,
                                 {
@@ -1345,41 +1356,54 @@ async def websocket_endpoint(
                             )
 
             elif msg_type == "admin-set-permissions":
-                target_user_id = message.get("target_user_id")
+                target_client_id = message.get("target_id") or message.get("client_id")
+                target_rec = room["participants"].get(target_client_id) if target_client_id else None
+                target_user_id = message.get("target_user_id") or (target_rec.get("user_id") if target_rec else None)
                 can_mute_val = bool(message.get("can_mute", False))
                 can_kick_val = bool(message.get("can_kick", False))
                 can_move_val = bool(message.get("can_move", False))
+                can_manage_roles_val = bool(message.get("can_manage_roles", False))
+                role_val = message.get("role") or ("admin" if can_manage_roles_val else ("moderator" if (can_mute_val or can_kick_val or can_move_val) else "user"))
+
                 sender_rec = room["participants"].get(client_id)
                 if sender_rec and (sender_rec.get("role") == "admin" or sender_rec.get("can_manage_roles")):
-                    updated_user = db.update_permissions(target_user_id, can_mute_val, can_kick_val, can_move_val)
-                    if updated_user:
-                        for cid, peer in room["participants"].items():
-                            if peer.get("user_id") == target_user_id:
-                                peer["can_mute"] = can_mute_val
-                                peer["can_kick"] = can_kick_val
-                                peer["can_move"] = can_move_val
-                                peer["role"] = updated_user["role"]
-                                await manager.broadcast_to_room(
-                                    room_id,
-                                    {
-                                        "type": "user-permissions-updated",
-                                        "client_id": cid,
-                                        "user_id": target_user_id,
-                                        "role": updated_user["role"],
-                                        "can_mute": can_mute_val,
-                                        "can_kick": can_kick_val,
-                                        "can_move": can_move_val,
-                                        "by_name": nickname
-                                    }
-                                )
-                        await manager.broadcast_to_room(
-                            room_id,
-                            {
-                                "type": "chat-system",
-                                "text": f"👑 {nickname}, {updated_user['nickname']} kullanıcısının yetkilerini güncelledi.",
-                                "timestamp": time.strftime("%H:%M")
-                            }
-                        )
+                    target_name = (target_rec.get("nickname") if target_rec else f"Kullanıcı")
+                    if target_user_id:
+                        db_res = db.update_permissions(target_user_id, can_mute_val, can_kick_val, can_move_val, role=role_val, can_manage_roles=can_manage_roles_val)
+                        if db_res:
+                            target_name = db_res.get("nickname", target_name)
+                    
+                    if target_rec:
+                        target_rec["can_mute"] = can_mute_val
+                        target_rec["can_kick"] = can_kick_val
+                        target_rec["can_move"] = can_move_val
+                        target_rec["can_manage_roles"] = can_manage_roles_val
+                        target_rec["role"] = role_val
+
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "user-permissions-updated",
+                            "client_id": target_client_id,
+                            "target_id": target_client_id,
+                            "user_id": target_user_id,
+                            "role": role_val,
+                            "can_mute": can_mute_val,
+                            "can_kick": can_kick_val,
+                            "can_move": can_move_val,
+                            "can_manage_roles": can_manage_roles_val,
+                            "by_name": nickname
+                        }
+                    )
+                    role_tr = "👑 Yönetici (Admin)" if role_val == "admin" else ("🛡️ Moderatör" if role_val == "moderator" else "👤 Normal Üye")
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "chat-system",
+                            "text": f"👑 {nickname}, {target_name} kullanıcısının rolünü '{role_tr}' olarak güncelledi.",
+                            "timestamp": time.strftime("%H:%M")
+                        }
+                    )
 
             elif msg_type == "user-change-nickname":
                 new_nick = message.get("nickname", "").strip()
