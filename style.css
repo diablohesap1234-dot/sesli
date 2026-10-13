@@ -2801,6 +2801,42 @@ body.desktop-mode.compact-mode .user-avatar {
     flex-shrink: 0;
 }
 
+.stage-stream-volume-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+}
+
+.stage-vol-slider {
+    width: 60px;
+    height: 4px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+.stage-vol-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    min-width: 26px;
+    white-space: nowrap;
+}
+
+.stage-stream-volume-wrap.streamer-mode {
+    background: rgba(242, 63, 67, 0.15);
+    border-color: rgba(242, 63, 67, 0.3);
+}
+
+.stage-stream-volume-wrap.streamer-mode .stage-vol-label {
+    color: #f23f43;
+    font-size: 9px;
+}
+
 .btn-stage-pill {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.15);
