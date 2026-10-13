@@ -366,23 +366,35 @@ class SoundEffects {
 // ============================================================================
 // 2. MİKROFON İZİNLERİ VE TEST ÖNİZLEMESİ (LOBBY)
 // ============================================================================
+let lobbyPreviewStream = null;
+
 async function initLobbyMicrophonePreview() {
+    if (lobbyPreviewStream) {
+        try {
+            lobbyPreviewStream.getTracks().forEach(t => t.stop());
+        } catch(e) {}
+        lobbyPreviewStream = null;
+    }
+
     try {
         SoundEffects.init();
         if (state.audioCtx && state.audioCtx.state === 'suspended') {
-            state.audioCtx.resume();
+            state.audioCtx.resume().catch(() => {});
         }
 
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
-                echoCancellation: el.chkEcho.checked,
-                noiseSuppression: el.chkNoise.checked,
+                echoCancellation: el.chkEcho ? el.chkEcho.checked : true,
+                noiseSuppression: el.chkNoise ? el.chkNoise.checked : true,
                 autoGainControl: true
             }
         });
+        lobbyPreviewStream = stream;
 
-        el.micStatusBadge.textContent = "Çalışıyor ✔";
-        el.micStatusBadge.classList.add("active");
+        if (el.micStatusBadge) {
+            el.micStatusBadge.textContent = "Çalışıyor ✔";
+            el.micStatusBadge.classList.add("active");
+        }
 
         const source = state.audioCtx.createMediaStreamSource(stream);
         const analyser = state.audioCtx.createAnalyser();
@@ -390,18 +402,31 @@ async function initLobbyMicrophonePreview() {
         source.connect(analyser);
 
         const dataArray = new Uint8Array(analyser.fftSize);
+        dataArray.fill(128);
 
         function updateMeter() {
-            if (el.lobbyScreen.classList.contains('hidden')) {
-                // Odaya girildiğinde önizleme stream'ini kapat
-                stream.getTracks().forEach(t => t.stop());
+            if (!el.lobbyScreen || el.lobbyScreen.classList.contains('hidden') || !lobbyPreviewStream) {
+                // Odaya girildiğinde veya lobi kapatıldığında önizleme stream'ini kapat
+                if (lobbyPreviewStream) {
+                    try {
+                        lobbyPreviewStream.getTracks().forEach(t => t.stop());
+                    } catch(e) {}
+                    lobbyPreviewStream = null;
+                }
                 return;
             }
             if (document.hidden) {
                 setTimeout(updateMeter, 400);
                 return;
             }
-            // Zaman alanı dalga formu (Time domain) ile kesin ve anlık mikrofon hareketi
+
+            if (state.audioCtx && state.audioCtx.state === 'suspended') {
+                if (el.micMeterFill) el.micMeterFill.style.width = "0%";
+                requestAnimationFrame(updateMeter);
+                return;
+            }
+
+            dataArray.fill(128);
             analyser.getByteTimeDomainData(dataArray);
             let maxDelta = 0;
             for (let i = 0; i < dataArray.length; i++) {
@@ -410,7 +435,9 @@ async function initLobbyMicrophonePreview() {
             }
             // Konuşma ve nefes hassasiyeti için çarpan
             const percent = Math.min(100, Math.round((maxDelta / 128) * 100 * 3));
-            el.micMeterFill.style.width = percent + "%";
+            if (el.micMeterFill) {
+                el.micMeterFill.style.width = percent + "%";
+            }
 
             requestAnimationFrame(updateMeter);
         }
@@ -420,8 +447,10 @@ async function initLobbyMicrophonePreview() {
         loadAudioDevices();
     } catch (err) {
         console.warn("Mikrofon izni alınamadı:", err);
-        el.micStatusBadge.textContent = "İzin Gerekli (Adres çubuğundan izin verin)";
-        el.micStatusBadge.classList.remove("active");
+        if (el.micStatusBadge) {
+            el.micStatusBadge.textContent = "İzin Gerekli (Adres çubuğundan izin verin)";
+            el.micStatusBadge.classList.remove("active");
+        }
     }
 }
 
@@ -451,8 +480,8 @@ async function setupLocalAudioStream(deviceId = null) {
     }
 
     const audioConstraints = {
-        echoCancellation: el.chkEcho.checked,
-        noiseSuppression: el.chkNoise.checked,
+        echoCancellation: el.chkEcho ? el.chkEcho.checked : true,
+        noiseSuppression: el.chkNoise ? el.chkNoise.checked : true,
         autoGainControl: true
     };
     if (deviceId) {
@@ -464,7 +493,7 @@ async function setupLocalAudioStream(deviceId = null) {
     // Web Audio Analyser
     SoundEffects.init();
     if (state.audioCtx && state.audioCtx.state === 'suspended') {
-        state.audioCtx.resume();
+        state.audioCtx.resume().catch(() => {});
     }
     const source = state.audioCtx.createMediaStreamSource(state.localStream);
     state.analyser = state.audioCtx.createAnalyser();
@@ -481,10 +510,28 @@ async function setupLocalAudioStream(deviceId = null) {
     }
 
     // Mevcut bağlantılardaki trackleri güncelle (re-negotiation)
-    Object.values(state.peers).forEach(peer => {
+    Object.entries(state.peers).forEach(async ([peerId, peer]) => {
         const sender = peer.pc.getSenders().find(s => s.track && s.track.kind === 'audio');
         if (sender && audioTrack) {
             sender.replaceTrack(audioTrack);
+        } else if (audioTrack) {
+            try {
+                peer.pc.addTrack(audioTrack, state.localStream);
+                const offer = await peer.pc.createOffer();
+                await peer.pc.setLocalDescription(offer);
+                if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                    state.ws.send(JSON.stringify({
+                        type: 'signal',
+                        target_id: peerId,
+                        data: {
+                            type: 'offer',
+                            sdp: peer.pc.localDescription
+                        }
+                    }));
+                }
+            } catch (e) {
+                console.warn("Peer addTrack error:", e);
+            }
         }
     });
 
@@ -497,7 +544,10 @@ function startVoiceActivityDetection() {
         clearTimeout(state.micLevelAnimationId);
     }
 
+    if (!state.analyser) return;
+
     const dataArray = new Uint8Array(state.analyser.fftSize);
+    dataArray.fill(128); // 128 = Ses dalgasında mutlak sessizlik
 
     function scheduleNext() {
         if (document.hidden) {
@@ -522,7 +572,15 @@ function startVoiceActivityDetection() {
             return;
         }
 
-        // Açık mikrofon dalga boyu VAD modu
+        // AudioContext askıdaysa konuşma tetikleme
+        if (!state.audioCtx || state.audioCtx.state === 'suspended') {
+            setSpeakingState(false);
+            scheduleNext();
+            return;
+        }
+
+        // Açık mikrofon dalga boyu VAD modu (önce diziyi sessizlikle doldur)
+        dataArray.fill(128);
         state.analyser.getByteTimeDomainData(dataArray);
         let maxDelta = 0;
         for (let i = 0; i < dataArray.length; i++) {
@@ -993,26 +1051,6 @@ function createPeerConnection(peerId, isInitiator) {
         monitorRemoteStreamVolume(peerId, remoteStream);
     };
 
-    // Parça eklendiğinde yeniden anlaşma (Renegotiation)
-    pc.onnegotiationneeded = async () => {
-        try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-                state.ws.send(JSON.stringify({
-                    type: 'signal',
-                    target_id: peerId,
-                    data: {
-                        type: 'offer',
-                        sdp: pc.localDescription
-                    }
-                }));
-            }
-        } catch (e) {
-            console.warn("Renegotiation error:", e);
-        }
-    };
-
     // ICE Adaylarını sunucu üzerinden karşı tarafa ilet
     pc.onicecandidate = (event) => {
         if (event.candidate && state.ws && state.ws.readyState === WebSocket.OPEN) {
@@ -1072,8 +1110,16 @@ function monitorRemoteStreamVolume(peerId, stream) {
         source.connect(analyser);
 
         const dataArray = new Uint8Array(analyser.fftSize);
+        dataArray.fill(128); // 128 = Ses dalgasında mutlak sessizlik
+
         function checkRemote() {
             if (!state.peers[peerId]) return;
+            if (state.audioCtx && state.audioCtx.state === 'suspended') {
+                updateUserCardSpeaking(peerId, false);
+                requestAnimationFrame(checkRemote);
+                return;
+            }
+            dataArray.fill(128);
             analyser.getByteTimeDomainData(dataArray);
             let maxDelta = 0;
             for (let i = 0; i < dataArray.length; i++) {
@@ -1100,6 +1146,15 @@ async function handleSignalMessage(senderId, data) {
 
     try {
         if (data.type === 'offer') {
+            // Eğer teklif çakışması varsa güvenle rollback yap
+            if (pc.signalingState !== 'stable') {
+                try {
+                    await pc.setLocalDescription({ type: 'rollback' });
+                } catch (e) {
+                    console.warn("Rollback failed:", e);
+                }
+            }
+
             await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
 
             // Bekleyen ICE adaylarını boşalt
@@ -1121,7 +1176,11 @@ async function handleSignalMessage(senderId, data) {
             }));
 
         } else if (data.type === 'answer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            if (pc.signalingState === 'have-local-offer') {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            } else {
+                console.warn(`[WebRTC] Answer alındı fakat durum ${pc.signalingState}, yoksayılıyor.`);
+            }
 
             // Bekleyen ICE adaylarını boşalt
             while (peer.pendingCandidates.length > 0) {
@@ -2030,6 +2089,9 @@ function switchToLobbyUI() {
     el.roomScreen.classList.add('hidden');
     el.lobbyScreen.classList.remove('hidden');
 
+    // Lobi mikrofon önizlemesini ve test çubuğunu yeniden başlat
+    initLobbyMicrophonePreview();
+
     // Temizlik
     if (state.ws) {
         state.ws.close();
@@ -2338,14 +2400,26 @@ async function startScreenShare() {
             el.stageStreamVideo.play().catch(e => console.warn(e));
         }
 
-        // WebRTC üzerinden diğer kullanıcılara video ve sekme sesi track'lerini ekle
+        // WebRTC üzerinden diğer kullanıcılara video ve sekme sesi track'lerini ekle ve yeni offer gönder
         const videoTrack = stream.getVideoTracks()[0];
         const audioTrack = stream.getAudioTracks()[0];
 
-        Object.values(state.peers).forEach(peer => {
+        Object.entries(state.peers).forEach(async ([peerId, peer]) => {
             try {
                 if (videoTrack) peer.pc.addTrack(videoTrack, stream);
                 if (audioTrack) peer.pc.addTrack(audioTrack, stream);
+                const offer = await peer.pc.createOffer();
+                await peer.pc.setLocalDescription(offer);
+                if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                    state.ws.send(JSON.stringify({
+                        type: 'signal',
+                        target_id: peerId,
+                        data: {
+                            type: 'offer',
+                            sdp: peer.pc.localDescription
+                        }
+                    }));
+                }
             } catch (e) {
                 console.warn("Peer addTrack error:", e);
             }
@@ -2387,8 +2461,8 @@ function stopScreenShare() {
     if (el.stageStreamVideo) {
         el.stageStreamVideo.srcObject = null;
     }
-    // WebRTC peer bağlantılarından video sender'ları temizle
-    Object.values(state.peers).forEach(peer => {
+    // WebRTC peer bağlantılarından video sender'ları temizle ve güncelle
+    Object.entries(state.peers).forEach(async ([peerId, peer]) => {
         try {
             const senders = peer.pc.getSenders();
             senders.forEach(sender => {
@@ -2396,6 +2470,18 @@ function stopScreenShare() {
                     peer.pc.removeTrack(sender);
                 }
             });
+            const offer = await peer.pc.createOffer();
+            await peer.pc.setLocalDescription(offer);
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({
+                    type: 'signal',
+                    target_id: peerId,
+                    data: {
+                        type: 'offer',
+                        sdp: peer.pc.localDescription
+                    }
+                }));
+            }
         } catch (e) {
             console.warn("Sender remove error:", e);
         }
@@ -3005,6 +3091,17 @@ function initEventListeners() {
     if (el.autoplayBanner) {
         el.autoplayBanner.addEventListener('click', unlockAudios);
     }
+
+    // Lobi ekranında herhangi bir etkileşimde (tıklama, yazma) AudioContext'i hemen uyandır
+    if (el.lobbyScreen) {
+        ['click', 'input', 'keydown', 'touchstart'].forEach(evt => {
+            el.lobbyScreen.addEventListener(evt, () => {
+                if (state.audioCtx && state.audioCtx.state === 'suspended') {
+                    state.audioCtx.resume().catch(() => {});
+                }
+            }, { passive: true });
+        });
+    }
 }
 
 // ============================================================================
@@ -3124,7 +3221,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     initEventListeners();
-    initLobbyMicrophonePreview();
     checkTunnelStatus();
     initDesktopExperience();
 
@@ -3159,6 +3255,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
         // Odaya ve ses kanallarına arka planda anında bağlan
         joinRoom(true);
+    } else {
+        // Lobide kalındıysa mikrofon önizlemesini ve test çubuğunu başlat
+        initLobbyMicrophonePreview();
     }
 
     // Service Worker Kaydı (PWA & Çevrimdışı Önbellek)
