@@ -2608,6 +2608,68 @@ body.desktop-mode.compact-mode .user-avatar {
     display: none !important;
 }
 
+/* YAYIN KÜÇÜLTÜLMÜŞ (IZGARA & ÜYELERİ GÖSTER) MODU */
+.voice-section.cinema-active.stage-minimized {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px;
+    overflow-y: auto !important;
+    padding: 10px !important;
+}
+
+.voice-section.cinema-active.stage-minimized .voice-grid {
+    display: grid !important;
+    flex: 1 1 auto;
+    width: 100%;
+    margin-top: 6px;
+}
+
+.voice-section.cinema-active.stage-minimized .mobile-channel-strip {
+    display: flex !important;
+}
+
+.voice-section.cinema-active.stage-minimized .shared-browser-stage {
+    height: 250px !important;
+    min-height: 220px !important;
+    max-height: 280px !important;
+    flex-shrink: 0;
+    border: 2px solid var(--accent);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.voice-section.cinema-active.stage-minimized .stage-dock-strip {
+    display: none !important;
+}
+
+/* YAYIN KÜÇÜLT / BÜYÜT BUTONU STİLİ */
+.btn-stage-layout {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: var(--transition);
+}
+
+.btn-stage-layout:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.35);
+    transform: translateY(-1px);
+}
+
+.btn-stage-layout.active-layout {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
 /* SİNEMA SAHNESİ KONTEYNERİ */
 .shared-browser-stage {
     display: flex;
@@ -4302,6 +4364,41 @@ body.desktop-mode.compact-mode .user-avatar {
 .btn-user-manage:hover {
     background: var(--primary);
     border-color: var(--primary);
+}
+
+.btn-card-quick-mute {
+    background: rgba(242, 63, 67, 0.25);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(242, 63, 67, 0.5);
+    color: #ff8c8f;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-card-quick-mute:hover {
+    background: var(--danger);
+    color: #fff;
+    border-color: var(--danger);
+    transform: translateY(-1px);
+}
+
+.btn-card-quick-mute.active-muted {
+    background: rgba(35, 165, 90, 0.3);
+    border-color: rgba(35, 165, 90, 0.6);
+    color: #57f287;
+}
+
+.btn-card-quick-mute.active-muted:hover {
+    background: var(--success);
+    color: #fff;
+    border-color: var(--success);
 }
 
 /* Moderasyon Modalı Detayları */
