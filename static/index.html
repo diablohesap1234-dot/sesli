@@ -83,68 +83,119 @@
                     <p class="subtitle">Agalarla düşük gecikmeli, kesintisiz sesli ve yazılı iletişim</p>
                 </div>
 
-                <form id="join-form" class="lobby-form">
-                    <!-- Kayıtlı Oturum Bildirimi (Varsa) -->
-                    <div id="saved-session-hint" class="saved-session-box hidden">
-                        <div class="saved-session-info">
-                            <span class="saved-icon">⚡</span>
-                            <span>Kayıtlı Profil: <strong id="saved-nick-label"></strong></span>
-                        </div>
-                        <button type="button" id="btn-clear-session" class="btn-clear-session" title="Kayıtlı oturumu sıfırla">Sıfırla / Farklı Giriş</button>
+                <!-- KİMLİK DOĞRULAMA (GİRİŞ / KAYIT) ALANI -->
+                <div id="auth-guest-view" class="auth-box">
+                    <div class="auth-tabs">
+                        <button type="button" id="tab-btn-login" class="auth-tab-btn active">🔑 Giriş Yap</button>
+                        <button type="button" id="tab-btn-register" class="auth-tab-btn">✨ Kayıt Ol</button>
                     </div>
 
-                    <div class="form-group">
-                        <label for="nickname-input">Takma Adın</label>
-                        <input type="text" id="nickname-input" value="Misafir" placeholder="Örn: Misafir" maxlength="20" required autocomplete="off">
+                    <!-- GİRİŞ FORMU -->
+                    <form id="auth-login-form" class="auth-form-card">
+                        <div class="form-group">
+                            <label for="auth-login-email">E-posta Adresi</label>
+                            <input type="email" id="auth-login-email" placeholder="ornek@agalar.com" required autocomplete="email">
+                        </div>
+                        <div class="form-group">
+                            <label for="auth-login-password">Şifre</label>
+                            <input type="password" id="auth-login-password" placeholder="••••••••" required autocomplete="current-password">
+                        </div>
+                        <button type="submit" id="btn-do-login" class="btn-primary" style="width: 100%;">
+                            <span>Giriş Yap</span>
+                        </button>
+                        <button type="button" id="btn-quick-admin" class="btn-quick-admin" title="Hazır admin hesabıyla giriş yap">
+                            👑 Hazır Admin Hesabı ile Giriş Yap (admin@agalar.com)
+                        </button>
+                    </form>
+
+                    <!-- KAYIT FORMU -->
+                    <form id="auth-register-form" class="auth-form-card hidden">
+                        <div class="form-group">
+                            <label for="auth-reg-nick">Kullanıcı Adı (Takma Ad)</label>
+                            <input type="text" id="auth-reg-nick" placeholder="Örn: KralAga" maxlength="20" required autocomplete="nickname">
+                        </div>
+                        <div class="form-group">
+                            <label for="auth-reg-email">E-posta Adresi</label>
+                            <input type="email" id="auth-reg-email" placeholder="ornek@agalar.com" required autocomplete="email">
+                        </div>
+                        <div class="form-group">
+                            <label for="auth-reg-password">Şifre</label>
+                            <input type="password" id="auth-reg-password" placeholder="En az 4 karakter" required autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label>Profil Rengi</label>
+                            <div class="color-picker" id="auth-reg-colors">
+                                <button type="button" class="color-swatch active" style="--c: #5865F2;" data-color="#5865F2"></button>
+                                <button type="button" class="color-swatch" style="--c: #23A55A;" data-color="#23A55A"></button>
+                                <button type="button" class="color-swatch" style="--c: #F23F43;" data-color="#F23F43"></button>
+                                <button type="button" class="color-swatch" style="--c: #FEE75C;" data-color="#FEE75C"></button>
+                                <button type="button" class="color-swatch" style="--c: #EB459E;" data-color="#EB459E"></button>
+                                <button type="button" class="color-swatch" style="--c: #57F287;" data-color="#57F287"></button>
+                                <button type="button" class="color-swatch" style="--c: #00B0F4;" data-color="#00B0F4"></button>
+                                <button type="button" class="color-swatch" style="--c: #E67E22;" data-color="#E67E22"></button>
+                            </div>
+                        </div>
+                        <button type="submit" id="btn-do-register" class="btn-primary" style="width: 100%;">
+                            <span>Kayıt Ol ve Oturumu Aç</span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- GİRİŞ YAPILMIŞ DURUM: ODA VE KULLANICI PROFİL ALANI -->
+                <div id="auth-user-view" class="auth-logged-in-view hidden">
+                    <div class="lobby-user-profile-badge">
+                        <div class="lup-left">
+                            <div class="lup-avatar" id="lobby-user-avatar">A</div>
+                            <div class="lup-meta">
+                                <div class="lup-name-row">
+                                    <span class="lup-name" id="lobby-user-name">Kullanıcı</span>
+                                    <span class="role-badge" id="lobby-user-role-badge">👤 Üye</span>
+                                </div>
+                                <span class="lup-email" id="lobby-user-email">email@agalar.com</span>
+                            </div>
+                        </div>
+                        <div class="lup-actions">
+                            <button type="button" id="btn-lobby-edit-nick" class="btn-action-sm" title="Kullanıcı Adını Değiştir">✏️ İsim Değiştir</button>
+                            <button type="button" id="btn-lobby-logout" class="btn-action-sm danger" title="Oturumu Kapat">🚪 Çıkış</button>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>Avatar Rengi</label>
-                        <div class="color-picker" id="color-picker">
-                            <button type="button" class="color-swatch active" style="--c: #5865F2;" data-color="#5865F2"></button>
-                            <button type="button" class="color-swatch" style="--c: #23A55A;" data-color="#23A55A"></button>
-                            <button type="button" class="color-swatch" style="--c: #F23F43;" data-color="#F23F43"></button>
-                            <button type="button" class="color-swatch" style="--c: #FEE75C;" data-color="#FEE75C"></button>
-                            <button type="button" class="color-swatch" style="--c: #EB459E;" data-color="#EB459E"></button>
-                            <button type="button" class="color-swatch" style="--c: #57F287;" data-color="#57F287"></button>
-                            <button type="button" class="color-swatch" style="--c: #00B0F4;" data-color="#00B0F4"></button>
-                            <button type="button" class="color-swatch" style="--c: #E67E22;" data-color="#E67E22"></button>
+                    <form id="join-form" class="lobby-form">
+                        <!-- Gizli veya uyumlu inputlar -->
+                        <input type="hidden" id="nickname-input" value="Misafir">
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label for="room-input">Sunucu / Grup Adı</label>
+                                <input type="text" id="room-input" value="gaming" placeholder="Oda adı" maxlength="30" required autocomplete="off">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="select-initial-channel">Başlangıç Ses Odası</label>
+                                <select id="select-initial-channel" class="lobby-channel-select">
+                                    <option value="channel-1" selected>🔊 Ses Odası 1</option>
+                                    <option value="channel-2">🔊 Ses Odası 2</option>
+                                    <option value="channel-3">🔊 Ses Odası 3</option>
+                                    <option value="channel-4">🔊 Ses Odası 4</option>
+                                    <option value="channel-5">🔊 Ses Odası 5</option>
+                                </select>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="room-input">Sunucu / Grup Adı</label>
-                            <input type="text" id="room-input" value="gaming" placeholder="Oda adı" maxlength="30" required autocomplete="off">
+                        <div class="form-group">
+                            <label for="password-input">Oda Şifresi (Opsiyonel)</label>
+                            <input type="password" id="password-input" placeholder="Gizli oda için şifre (opsiyonel)" maxlength="20" autocomplete="new-password">
                         </div>
-                        <div class="form-group flex-1">
-                            <label for="select-initial-channel">Başlangıç Ses Odası</label>
-                            <select id="select-initial-channel" class="lobby-channel-select">
-                                <option value="channel-1" selected>🔊 Ses Odası 1</option>
-                                <option value="channel-2">🔊 Ses Odası 2</option>
-                                <option value="channel-3">🔊 Ses Odası 3</option>
-                                <option value="channel-4">🔊 Ses Odası 4</option>
-                                <option value="channel-5">🔊 Ses Odası 5</option>
-                            </select>
-                        </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label for="password-input">Oda Şifresi (Opsiyonel)</label>
-                        <input type="password" id="password-input" placeholder="Gizli oda için şifre (opsiyonel)" maxlength="20" autocomplete="new-password">
-                    </div>
-
-                    <!-- Mikrofon Test ve İzin Alanı -->
-                    <div class="mic-test-box">
-                        <div class="mic-test-header">
-                            <span>🎤 Mikrofon Önizleme:</span>
-                            <span id="mic-status-badge" class="badge">Bekleniyor</span>
+                        <!-- Mikrofon Test ve İzin Alanı -->
+                        <div class="mic-test-box">
+                            <div class="mic-test-header">
+                                <span>🎤 Mikrofon Önizleme:</span>
+                                <span id="mic-status-badge" class="badge">Bekleniyor</span>
+                            </div>
+                            <div class="mic-meter-bar">
+                                <div id="mic-meter-fill" class="mic-meter-fill"></div>
+                            </div>
+                            <p class="mic-tip">Odaya girmeden önce mikrofonuna konuşarak çubuğun hareket ettiğini kontrol edebilirsin.</p>
                         </div>
-                        <div class="mic-meter-bar">
-                            <div id="mic-meter-fill" class="mic-meter-fill"></div>
-                        </div>
-                        <p class="mic-tip">Odaya girmeden önce mikrofonuna konuşarak çubuğun hareket ettiğini kontrol edebilirsin.</p>
-                    </div>
 
                     <!-- Dış İnternet Tünel Paylaşımı (Bat gerektirmez) -->
                     <div class="tunnel-box">
@@ -350,6 +401,11 @@
                             </div>
 
                             <div class="stage-topbar-right">
+                                <div class="stage-stream-volume-wrap" id="stage-stream-volume-wrap" title="Yayın Sesi">
+                                    <button type="button" id="btn-stage-vol-mute" class="btn-stage-icon" title="Yayın Sesini Kapat/Aç">🔊</button>
+                                    <input type="range" id="stage-vol-slider" class="stage-vol-slider" min="0" max="100" value="100" title="Yayın Sesi">
+                                    <span id="stage-vol-label" class="stage-vol-label">100%</span>
+                                </div>
                                 <button type="button" id="btn-stage-share-screen" class="btn-stage-pill btn-stage-stream-toggle" title="Dizi Sekmesini veya Ekranı Sesli Paylaş (WebRTC Canlı Yayın)">
                                     🖥️ Yayını Başlat
                                 </button>
@@ -359,7 +415,7 @@
                                 <button type="button" id="btn-stage-fullscreen" class="btn-stage-icon" title="Tam Ekran Modu">
                                     ⛶
                                 </button>
-                                <button type="button" id="btn-stage-close" class="btn-stage-icon btn-stage-close" title="Yayını Kapat">
+                                <button type="button" id="btn-stage-close" class="btn-stage-icon btn-stage-close" style="display: none;" title="Yayını Kapat">
                                     ✕
                                 </button>
                             </div>
@@ -392,6 +448,28 @@
                             <div id="stage-stream-wrap" class="stage-media-item hidden">
                                 <video id="stage-stream-video" autoplay playsinline></video>
                                 <div class="live-stream-badge">🔴 CANLI DİZİ & EKRAN YAYINI</div>
+
+                                <!-- CANLI YAYIN EKRANI ALTI SES & PLAYER KONTROL ÇUBUĞU (DİSCORD/TWITCH TARZI) -->
+                                <div class="stage-player-overlay-bar" id="stage-player-overlay-bar">
+                                    <div class="overlay-left">
+                                        <span class="live-indicator-dot"></span>
+                                        <span id="overlay-stream-title" class="overlay-stream-title">Canlı Yayın</span>
+                                    </div>
+                                    <div class="overlay-right">
+                                        <!-- Ses Kontrol Alanı -->
+                                        <div class="overlay-volume-control" id="overlay-volume-wrap" title="Yayın Sesi">
+                                            <button type="button" id="btn-overlay-vol-mute" class="btn-overlay-action" title="Yayın Sesini Kapat/Aç">
+                                                <span id="overlay-vol-icon">🔊</span>
+                                            </button>
+                                            <input type="range" id="overlay-vol-slider" class="overlay-vol-slider" min="0" max="100" value="100" title="Yayın Sesi">
+                                            <span id="overlay-vol-label" class="overlay-vol-label">100%</span>
+                                        </div>
+                                        <!-- Tam Ekran Butonu -->
+                                        <button type="button" id="btn-overlay-fullscreen" class="btn-overlay-action" title="Tam Ekran Modu">
+                                            ⛶
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -495,7 +573,11 @@
                 <div class="dock-user-info">
                     <div class="dock-avatar" id="dock-avatar">T</div>
                     <div class="dock-meta">
-                        <span class="dock-username" id="dock-username">Sen</span>
+                        <div class="dock-name-row">
+                            <span class="dock-username" id="dock-username">Sen</span>
+                            <span class="role-badge role-user" id="dock-role-badge">👤 Üye</span>
+                            <button type="button" id="btn-dock-edit-name" class="btn-dock-edit" title="Kullanıcı Adını Değiştir">✏️</button>
+                        </div>
                         <span class="dock-status" id="dock-connection-status">Bağlandı</span>
                     </div>
                 </div>
@@ -713,6 +795,132 @@
                     <div class="desktop-features-list">
                         <div>✔ <strong>Arka Planda Dinleme:</strong> Oyun oynarken veya pencere simge durumundayken sesiniz ve arkadaşlarınızın sesi kesilmez.</div>
                         <div>✔ <strong>Otomatik Donanım Tasarrufu:</strong> Pencere gizlendiğinde ekran animasyonları durdurularak işlemci ve RAM kullanımı minimuma çekilir.</div>
+                    </div>
+                </div>
+            </div>
+        <!-- KULLANICI ADI & PROFİL DÜZENLEME MODALI -->
+        <div id="edit-profile-modal" class="modal-backdrop hidden">
+            <div class="modal-card modal-profile-card">
+                <div class="modal-header">
+                    <h2>✏️ Kullanıcı Profilini Düzenle</h2>
+                    <button type="button" id="btn-close-edit-profile" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-profile-form">
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label for="input-edit-nickname">Yeni Kullanıcı Adı</label>
+                            <input type="text" id="input-edit-nickname" class="form-input-text" maxlength="20" placeholder="Kullanıcı Adı" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label>Avatar Rengi</label>
+                            <div class="color-picker" id="edit-profile-colors">
+                                <button type="button" class="color-swatch active" style="--c: #5865F2;" data-color="#5865F2"></button>
+                                <button type="button" class="color-swatch" style="--c: #23A55A;" data-color="#23A55A"></button>
+                                <button type="button" class="color-swatch" style="--c: #F23F43;" data-color="#F23F43"></button>
+                                <button type="button" class="color-swatch" style="--c: #FEE75C;" data-color="#FEE75C"></button>
+                                <button type="button" class="color-swatch" style="--c: #EB459E;" data-color="#EB459E"></button>
+                                <button type="button" class="color-swatch" style="--c: #57F287;" data-color="#57F287"></button>
+                                <button type="button" class="color-swatch" style="--c: #00B0F4;" data-color="#00B0F4"></button>
+                                <button type="button" class="color-swatch" style="--c: #E67E22;" data-color="#E67E22"></button>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button type="button" id="btn-cancel-edit-profile" class="btn-secondary">İptal</button>
+                            <button type="submit" id="btn-submit-edit-profile" class="btn-primary">Kaydet</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADMİN & YETKİLİ MODERASYON MODALI -->
+        <div id="mod-user-modal" class="modal-backdrop hidden">
+            <div class="modal-card modal-mod-card">
+                <div class="modal-header">
+                    <h2>🛡️ Kullanıcı Yönetimi & Moderasyon</h2>
+                    <button type="button" id="btn-close-mod-modal" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <!-- Hedef Kullanıcı Başlığı -->
+                    <div class="mod-user-header">
+                        <div class="mod-avatar" id="mod-target-avatar">U</div>
+                        <div class="mod-meta">
+                            <div class="mod-name-row">
+                                <h3 id="mod-target-name">Kullanıcı</h3>
+                                <span class="role-badge" id="mod-target-role">👤 Üye</span>
+                            </div>
+                            <span class="mod-sub" id="mod-target-status">Ses Odası 1</span>
+                        </div>
+                    </div>
+
+                    <!-- Hızlı Moderasyon Aksiyonları -->
+                    <div class="mod-section">
+                        <div class="mod-section-title">⚡ Hızlı İşlemler</div>
+                        <div class="mod-actions-grid">
+                            <!-- Sustur / Mute Kaldır -->
+                            <button type="button" id="btn-mod-toggle-mute" class="btn-mod-action danger">
+                                <span class="btn-icon">🔇</span>
+                                <span id="mod-mute-text">Sunucu Genelinde Sustur</span>
+                            </button>
+
+                            <!-- Odadan At (Kick) -->
+                            <button type="button" id="btn-mod-kick" class="btn-mod-action danger">
+                                <span class="btn-icon">🚫</span>
+                                <span>Odadan At (Kick)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Ses Odasını Zorla Değiştir (Force Move) -->
+                    <div class="mod-section">
+                        <div class="mod-section-title">🔀 Odaya Taşı</div>
+                        <div class="mod-move-row">
+                            <select id="select-mod-channel" class="form-select">
+                                <option value="channel-1">🔊 Ses Odası 1</option>
+                                <option value="channel-2">🔊 Ses Odası 2</option>
+                                <option value="channel-3">🔊 Ses Odası 3</option>
+                                <option value="channel-4">🔊 Ses Odası 4</option>
+                                <option value="channel-5">🔊 Ses Odası 5</option>
+                            </select>
+                            <button type="button" id="btn-mod-move" class="btn-secondary">Taşı</button>
+                        </div>
+                    </div>
+
+                    <!-- Yetki Verme & Rol Atama Bölümü (Sadece Admin veya Yetki Yöneticileri için) -->
+                    <div class="mod-section" id="mod-permissions-section">
+                        <div class="mod-section-title">👑 Yetki ve Rol Düzenleme</div>
+                        
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label for="select-mod-role" style="font-size: 13px; font-weight: 600;">Kullanıcı Rolü</label>
+                            <select id="select-mod-role" class="form-select">
+                                <option value="user">👤 Normal Üye</option>
+                                <option value="moderator">🛡️ Moderatör</option>
+                                <option value="admin">👑 Sunucu Yöneticisi (Admin)</option>
+                            </select>
+                        </div>
+
+                        <div class="mod-checkboxes">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="chk-perm-mute">
+                                <span>🔇 Diğerlerini Susturma Yetkisi (can_mute)</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="chk-perm-kick">
+                                <span>🚫 Kullanıcıları Kickleme Yetkisi (can_kick)</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="chk-perm-move">
+                                <span>🔀 Odasını Değiştirme Yetkisi (can_move)</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="chk-perm-manage-roles">
+                                <span>👑 Yetki Verme & Moderasyon Yetkisi (can_manage_roles)</span>
+                            </label>
+                        </div>
+
+                        <button type="button" id="btn-mod-save-permissions" class="btn-primary" style="width: 100%; margin-top: 14px;">
+                            <span>Yetkileri Kaydet ve Uygula</span>
+                        </button>
                     </div>
                 </div>
             </div>
