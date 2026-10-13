@@ -647,6 +647,15 @@ async def websocket_endpoint(
         await websocket.close(code=1008)
         return
 
+    # If client_id already in room participants (reconnect), close old socket gracefully
+    if client_id in room["participants"]:
+        try:
+            old_ws = room["participants"][client_id].get("websocket")
+            if old_ws and old_ws != websocket:
+                await old_ws.close()
+        except Exception:
+            pass
+
     # Add client to room
     room["participants"][client_id] = {
         "websocket": websocket,
@@ -977,62 +986,63 @@ async def websocket_endpoint(
     except Exception as e:
         logger.error(f"WebSocket error for {client_id}: {e}")
     finally:
-        # Clean up client
+        # Clean up client (Yalnızca bu websocket hala odadaki aktif bağlantıysa temizle - yeniden bağlanma yarışını önler)
         if room_id in rooms and client_id in rooms[room_id]["participants"]:
-            del rooms[room_id]["participants"][client_id]
-            logger.info(f"User left: {nickname}. Remaining in {room_id}: {len(rooms[room_id]['participants'])}")
+            if rooms[room_id]["participants"][client_id].get("websocket") == websocket:
+                del rooms[room_id]["participants"][client_id]
+                logger.info(f"User left: {nickname}. Remaining in {room_id}: {len(rooms[room_id]['participants'])}")
 
-            # Eğer ayrılan kişi tarayıcı yöneticisi ise yetkiyi kalan birine devret
-            browser_state = room.get("shared_browser")
-            if browser_state and browser_state.get("active") and browser_state.get("controller_id") == client_id:
-                remaining_cids = list(room["participants"].keys())
-                if remaining_cids:
-                    new_ctrl_id = remaining_cids[0]
-                    new_ctrl_name = room["participants"][new_ctrl_id]["nickname"]
-                    browser_state["controller_id"] = new_ctrl_id
-                    browser_state["controller_name"] = new_ctrl_name
-                    await manager.broadcast_to_room(
-                        room_id,
-                        {
-                            "type": "browser-state-update",
-                            "state": browser_state
-                        }
-                    )
-                    await manager.broadcast_to_room(
-                        room_id,
-                        {
-                            "type": "chat-system",
-                            "text": f"👑 Önceki yönetici ayrıldığı için ortak tarayıcı kontrolü {new_ctrl_name} kullanıcısına devredildi.",
-                            "timestamp": time.strftime("%H:%M")
-                        }
-                    )
-                else:
-                    browser_state["active"] = False
-                    browser_state["controller_id"] = None
-                    browser_state["controller_name"] = None
+                # Eğer ayrılan kişi tarayıcı yöneticisi ise yetkiyi kalan birine devret
+                browser_state = room.get("shared_browser")
+                if browser_state and browser_state.get("active") and browser_state.get("controller_id") == client_id:
+                    remaining_cids = list(room["participants"].keys())
+                    if remaining_cids:
+                        new_ctrl_id = remaining_cids[0]
+                        new_ctrl_name = room["participants"][new_ctrl_id]["nickname"]
+                        browser_state["controller_id"] = new_ctrl_id
+                        browser_state["controller_name"] = new_ctrl_name
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "browser-state-update",
+                                "state": browser_state
+                            }
+                        )
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "chat-system",
+                                "text": f"👑 Önceki yönetici ayrıldığı için ortak tarayıcı kontrolü {new_ctrl_name} kullanıcısına devredildi.",
+                                "timestamp": time.strftime("%H:%M")
+                            }
+                        )
+                    else:
+                        browser_state["active"] = False
+                        browser_state["controller_id"] = None
+                        browser_state["controller_name"] = None
 
-            # Notify others
-            await manager.broadcast_to_room(
-                room_id,
-                {
-                    "type": "user-left",
-                    "client_id": client_id,
-                    "nickname": nickname
-                }
-            )
-            await manager.broadcast_to_room(
-                room_id,
-                {
-                    "type": "chat-system",
-                    "text": f"👋 {nickname} odadan ayrıldı.",
-                    "timestamp": time.strftime("%H:%M")
-                }
-            )
+                # Notify others
+                await manager.broadcast_to_room(
+                    room_id,
+                    {
+                        "type": "user-left",
+                        "client_id": client_id,
+                        "nickname": nickname
+                    }
+                )
+                await manager.broadcast_to_room(
+                    room_id,
+                    {
+                        "type": "chat-system",
+                        "text": f"👋 {nickname} odadan ayrıldı.",
+                        "timestamp": time.strftime("%H:%M")
+                    }
+                )
 
-            # If room is completely empty, clean up room and reset password
-            if len(rooms[room_id]["participants"]) == 0:
-                del rooms[room_id]
-                logger.info(f"Room {room_id} is now empty and has been removed.")
+                # If room is completely empty, clean up room and reset password
+                if len(rooms[room_id]["participants"]) == 0:
+                    del rooms[room_id]
+                    logger.info(f"Room {room_id} is now empty and has been removed.")
 
 
 # Mount static directory for JS, CSS, assets
