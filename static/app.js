@@ -1092,7 +1092,11 @@ function createPeerConnection(peerId, isInitiator) {
             if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.add('active');
 
             event.track.onended = () => {
-                if (el.stageStreamVideo) {
+                // Eğer ekranı paylaşan biz isek (yayıncıysak) veya bu track yayın yöneticisine ait değilse sahneyi ASLA kapatma
+                if (state.sharedBrowser.screenStream) return;
+                if (peerId !== state.sharedBrowser.controllerId) return;
+
+                if (el.stageStreamVideo && el.stageStreamVideo.srcObject === remoteVideoStream) {
                     el.stageStreamVideo.srcObject = null;
                     el.stageStreamVideo.muted = true;
                 }
@@ -2587,6 +2591,9 @@ async function startScreenShare() {
         });
 
         state.sharedBrowser.screenStream = stream;
+        state.sharedBrowser.active = true;
+        state.sharedBrowser.controllerId = state.myId;
+        state.sharedBrowser.controllerName = state.nickname;
 
         // Kendi önizlememiz - PAYLAŞAN KİŞİ KENDİ SESİNİ ASLA CHAT KANALINDAN DUYMAMALI
         if (el.stageStreamVideo) {
@@ -2630,8 +2637,13 @@ async function startScreenShare() {
             }
         });
 
-        // Sunucuya stream moduna geçtiğimizi bildir
+        // Sunucuya yayın yöneticisi olarak canlı yayın başlattığımızı bildir
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({
+                type: 'browser-open',
+                url: 'CANLI_YAYIN',
+                mode: 'stream'
+            }));
             state.ws.send(JSON.stringify({
                 type: 'browser-change-url',
                 url: 'CANLI_YAYIN',
@@ -2650,6 +2662,9 @@ async function startScreenShare() {
         if (videoTrack) {
             videoTrack.onended = () => {
                 stopScreenShare();
+                if (state.sharedBrowser.controllerId === state.myId) {
+                    closeSharedBrowser();
+                }
             };
         }
 
@@ -2841,7 +2856,16 @@ function initEventListeners() {
 
     if (el.btnStageClose) {
         el.btnStageClose.addEventListener('click', () => {
-            closeSharedBrowser();
+            if (state.sharedBrowser.controllerId === state.myId) {
+                if (confirm("Canlı yayın oturumunu sonlandırmak istiyor musunuz?")) {
+                    closeSharedBrowser();
+                }
+            } else {
+                // İzleyici sadece kendi ekranında sahneyi gizler, odadaki yayını asla kapatmaz
+                if (el.voiceSection) el.voiceSection.classList.remove('cinema-active');
+                if (el.sharedBrowserStage) el.sharedBrowserStage.classList.add('hidden');
+                if (el.btnSharedBrowserToggle) el.btnSharedBrowserToggle.classList.remove('active');
+            }
         });
     }
 
@@ -2887,6 +2911,9 @@ function initEventListeners() {
         el.btnStageShareScreen.addEventListener('click', () => {
             if (state.sharedBrowser.screenStream) {
                 stopScreenShare();
+                if (state.sharedBrowser.controllerId === state.myId) {
+                    closeSharedBrowser();
+                }
             } else {
                 startScreenShare();
             }
@@ -2895,12 +2922,9 @@ function initEventListeners() {
 
     if (el.btnEmptyStartStream) {
         el.btnEmptyStartStream.addEventListener('click', () => {
-            if (state.sharedBrowser.active && state.sharedBrowser.controllerId !== state.myId) {
+            if (state.sharedBrowser.active && state.sharedBrowser.controllerId && state.sharedBrowser.controllerId !== state.myId) {
                 requestBrowserControl();
             } else {
-                if (!state.sharedBrowser.active) {
-                    openSharedBrowser('CANLI_YAYIN', 'stream');
-                }
                 startScreenShare();
             }
         });
