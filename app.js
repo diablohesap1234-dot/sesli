@@ -68,7 +68,20 @@ const state = {
         title: '',
         screenStream: null,
         pendingControlReqFrom: null // { id, name }
-    }
+    },
+
+    // Kimlik Doğrulama & Oturum & Moderasyon Yetkileri
+    token: localStorage.getItem('agalar_token') || null,
+    currentUser: null,
+    myRole: 'user', // 'admin', 'moderator', 'user'
+    myPermissions: {
+        can_mute: false,
+        can_kick: false,
+        can_move: false,
+        can_manage_roles: false
+    },
+    isServerMuted: false,
+    activeModTargetId: null
 };
 
 // WebRTC STUN Configuration
@@ -245,11 +258,72 @@ const el = {
     stageDockStrip: document.getElementById('stage-dock-strip'),
     stageDockSpeakers: document.getElementById('stage-dock-speakers'),
 
+    // Yayın Ekranı Altı Overlay Player ve Ses Kontrolleri
+    stagePlayerOverlayBar: document.getElementById('stage-player-overlay-bar'),
+    overlayStreamTitle: document.getElementById('overlay-stream-title'),
+    overlayVolumeWrap: document.getElementById('overlay-volume-wrap'),
+    btnOverlayVolMute: document.getElementById('btn-overlay-vol-mute'),
+    overlayVolIcon: document.getElementById('overlay-vol-icon'),
+    overlayVolSlider: document.getElementById('overlay-vol-slider'),
+    overlayVolLabel: document.getElementById('overlay-vol-label'),
+    btnOverlayFullscreen: document.getElementById('btn-overlay-fullscreen'),
+
     // Kontrol Talep Modalı
     controlRequestModal: document.getElementById('control-request-modal'),
     ctrlReqText: document.getElementById('ctrl-req-text'),
     btnGrantCtrlRequest: document.getElementById('btn-grant-ctrl-request'),
-    btnDenyCtrlRequest: document.getElementById('btn-deny-ctrl-request')
+    btnDenyCtrlRequest: document.getElementById('btn-deny-ctrl-request'),
+
+    // Auth & Profil DOM Elemanları
+    authGuestView: document.getElementById('auth-guest-view'),
+    authUserView: document.getElementById('auth-user-view'),
+    tabBtnLogin: document.getElementById('tab-btn-login'),
+    tabBtnRegister: document.getElementById('tab-btn-register'),
+    authLoginForm: document.getElementById('auth-login-form'),
+    authRegisterForm: document.getElementById('auth-register-form'),
+    authLoginEmail: document.getElementById('auth-login-email'),
+    authLoginPassword: document.getElementById('auth-login-password'),
+    btnQuickAdmin: document.getElementById('btn-quick-admin'),
+    authRegNick: document.getElementById('auth-reg-nick'),
+    authRegEmail: document.getElementById('auth-reg-email'),
+    authRegPassword: document.getElementById('auth-reg-password'),
+    authRegColors: document.getElementById('auth-reg-colors'),
+    lobbyUserAvatar: document.getElementById('lobby-user-avatar'),
+    lobbyUserName: document.getElementById('lobby-user-name'),
+    lobbyUserRoleBadge: document.getElementById('lobby-user-role-badge'),
+    lobbyUserEmail: document.getElementById('lobby-user-email'),
+    btnLobbyEditNick: document.getElementById('btn-lobby-edit-nick'),
+    btnLobbyLogout: document.getElementById('btn-lobby-logout'),
+    dockRoleBadge: document.getElementById('dock-role-badge'),
+    btnDockEditName: document.getElementById('btn-dock-edit-name'),
+
+    // İsim / Profil Düzenleme Modalı
+    editProfileModal: document.getElementById('edit-profile-modal'),
+    btnCloseEditProfile: document.getElementById('btn-close-edit-profile'),
+    btnCancelEditProfile: document.getElementById('btn-cancel-edit-profile'),
+    editProfileForm: document.getElementById('edit-profile-form'),
+    inputEditNickname: document.getElementById('input-edit-nickname'),
+    editProfileColors: document.getElementById('edit-profile-colors'),
+
+    // Admin & Moderasyon Modalı
+    modUserModal: document.getElementById('mod-user-modal'),
+    btnCloseModModal: document.getElementById('btn-close-mod-modal'),
+    modTargetAvatar: document.getElementById('mod-target-avatar'),
+    modTargetName: document.getElementById('mod-target-name'),
+    modTargetRole: document.getElementById('mod-target-role'),
+    modTargetStatus: document.getElementById('mod-target-status'),
+    btnModToggleMute: document.getElementById('btn-mod-toggle-mute'),
+    modMuteText: document.getElementById('mod-mute-text'),
+    btnModKick: document.getElementById('btn-mod-kick'),
+    selectModChannel: document.getElementById('select-mod-channel'),
+    btnModMove: document.getElementById('btn-mod-move'),
+    modPermissionsSection: document.getElementById('mod-permissions-section'),
+    selectModRole: document.getElementById('select-mod-role'),
+    chkPermMute: document.getElementById('chk-perm-mute'),
+    chkPermKick: document.getElementById('chk-perm-kick'),
+    chkPermMove: document.getElementById('chk-perm-move'),
+    chkPermManageRoles: document.getElementById('chk-perm-manage-roles'),
+    btnModSavePermissions: document.getElementById('btn-mod-save-permissions')
 };
 
 // ============================================================================
@@ -706,6 +780,9 @@ async function joinRoom(isAutoJoin = false) {
         if (state.password) {
             wsUrl += `&password=${encodeURIComponent(state.password)}`;
         }
+        if (state.token) {
+            wsUrl += `&token=${encodeURIComponent(state.token)}`;
+        }
 
         if (state.ws) {
             try {
@@ -781,6 +858,14 @@ function handleServerMessage(msg) {
             console.log("Odaya hoş geldin. Mevcut üyeler:", msg.users);
             state.voiceChannel = msg.your_voice_channel || state.voiceChannel || 'channel-1';
 
+            if (msg.your_role) state.myRole = msg.your_role;
+            if (msg.your_permissions) state.myPermissions = msg.your_permissions;
+            if (typeof msg.is_server_muted !== 'undefined') {
+                state.isServerMuted = Boolean(msg.is_server_muted);
+                applyServerMuteState(state.isServerMuted);
+            }
+            updateDockUserMeta();
+
             // Temiz bir başlangıç için eski/kopmuş tüm WebRTC bağlantılarını sıfırla
             Object.keys(state.peers).forEach(pId => removePeer(pId, false));
             state.peers = {};
@@ -842,7 +927,13 @@ function handleServerMessage(msg) {
                 voice_channel: msg.voice_channel || 'channel-1',
                 is_muted: msg.is_muted || false,
                 is_deafened: msg.is_deafened || false,
-                is_speaking: false
+                is_speaking: false,
+                role: msg.role || 'user',
+                can_mute: Boolean(msg.can_mute),
+                can_kick: Boolean(msg.can_kick),
+                can_move: Boolean(msg.can_move),
+                can_manage_roles: Boolean(msg.can_manage_roles),
+                is_server_muted: Boolean(msg.is_server_muted)
             };
             updateOnlineCount(Object.keys(state.allUsers).length + 1);
             renderVoiceChannelsUI();
@@ -993,6 +1084,88 @@ function handleServerMessage(msg) {
             alert(`${msg.from_name || 'Yönetici'} kontrol yetkisi talebinizi reddetti.`);
             break;
 
+        case 'user-server-muted':
+            // Sunucu genelinde susturuldu / susturma kaldırıldı
+            console.log("Sunucu mute bildirimi:", msg);
+            if (msg.target_id === state.myId) {
+                state.isServerMuted = Boolean(msg.is_server_muted);
+                applyServerMuteState(state.isServerMuted);
+                if (state.isServerMuted) {
+                    alert(`🔇 Bir yönetici (${msg.muted_by || 'Admin'}) tarafından sunucu genelinde susturuldunuz!`);
+                } else {
+                    alert(`🔊 Susturmanız (${msg.muted_by || 'Admin'}) tarafından kaldırıldı.`);
+                }
+            } else {
+                if (state.allUsers[msg.target_id]) {
+                    state.allUsers[msg.target_id].is_server_muted = Boolean(msg.is_server_muted);
+                }
+                syncVoiceGrid();
+                updateModModalIfOpen(msg.target_id);
+            }
+            break;
+
+        case 'force-channel-switch':
+            // Yönetici bizi başka odaya taşıdı
+            console.log("Zorla oda değiştirme:", msg);
+            if (msg.target_channel && state.voiceChannel !== msg.target_channel) {
+                alert(`🔀 Yönetici (${msg.moved_by || 'Admin'}) sizi ${state.channelNames[msg.target_channel] || msg.target_channel} odasına taşıdı.`);
+                switchVoiceChannel(msg.target_channel);
+            }
+            break;
+
+        case 'kicked':
+            // Odadan atıldık
+            console.log("Odadan atıldınız:", msg);
+            alert(`🚫 Sunucudan Atıldınız!\n\nSebep: ${msg.reason || 'Yönetici tarafından odadan atıldınız.'}`);
+            switchToLobbyUI();
+            break;
+
+        case 'user-permissions-updated':
+            // Yetkiler güncellendi
+            console.log("Yetki güncellemesi:", msg);
+            if (msg.target_id === state.myId) {
+                state.myRole = msg.role || state.myRole;
+                state.myPermissions = {
+                    can_mute: Boolean(msg.can_mute),
+                    can_kick: Boolean(msg.can_kick),
+                    can_move: Boolean(msg.can_move),
+                    can_manage_roles: Boolean(msg.can_manage_roles)
+                };
+                updateDockUserMeta();
+                alert(`👑 Yetkileriniz güncellendi! Yeni rolünüz: ${getRoleLabel(state.myRole)}`);
+            } else {
+                if (state.allUsers[msg.target_id]) {
+                    state.allUsers[msg.target_id].role = msg.role;
+                    state.allUsers[msg.target_id].can_mute = Boolean(msg.can_mute);
+                    state.allUsers[msg.target_id].can_kick = Boolean(msg.can_kick);
+                    state.allUsers[msg.target_id].can_move = Boolean(msg.can_move);
+                    state.allUsers[msg.target_id].can_manage_roles = Boolean(msg.can_manage_roles);
+                }
+                updateModModalIfOpen(msg.target_id);
+            }
+            syncVoiceGrid();
+            break;
+
+        case 'user-nickname-changed':
+            // Kullanıcı adı değişti
+            console.log("Kullanıcı adı değişti:", msg);
+            if (msg.client_id === state.myId) {
+                state.nickname = msg.new_nickname;
+                if (el.dockUsername) el.dockUsername.textContent = msg.new_nickname;
+                if (el.lobbyUserName) el.lobbyUserName.textContent = msg.new_nickname;
+            } else {
+                if (state.allUsers[msg.client_id]) {
+                    state.allUsers[msg.client_id].nickname = msg.new_nickname;
+                }
+                if (state.dmTabs[msg.client_id]) {
+                    state.dmTabs[msg.client_id].nickname = msg.new_nickname;
+                    renderChatTabs();
+                }
+            }
+            syncVoiceGrid();
+            renderVoiceChannelsUI();
+            break;
+
         case 'pong':
             // Gecikme ölçümü ve Watchdog
             state.lastPongReceived = Date.now();
@@ -1064,24 +1237,22 @@ function createPeerConnection(peerId, isInitiator) {
             const remoteVideoStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
             if (el.stageStreamVideo) {
                 el.stageStreamVideo.srcObject = remoteVideoStream;
-                // Ekranı paylaşan kişi BİZ DEĞİLSEK (yani izleyiciysek) sesi aç, BİZ İSEK kesinlikle sessiz kal
+                // Ekranı paylaşan kişi BİZ DEĞİLSEK (yani izleyiciysek) sesi aç, BİZ İSEK kesinlikle sessiz kal (yankı önleme)
                 const isSharingSelf = Boolean(state.sharedBrowser.screenStream);
                 if (!isSharingSelf) {
-                    el.stageStreamVideo.muted = false;
-                    el.stageStreamVideo.volume = 1.0;
-                    if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.remove('streamer-mode');
-                    if (el.stageVolSlider) el.stageVolSlider.disabled = false;
-                    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔊';
-                    if (el.stageVolLabel) el.stageVolLabel.textContent = '100%';
+                    setStreamVolume(currentStreamVolume);
+                    el.stageStreamVideo.play().catch(e => {
+                        console.warn("Unmuted stream playback failed, falling back to muted autoplay with banner:", e);
+                        el.stageStreamVideo.muted = true;
+                        el.stageStreamVideo.play().catch(err2 => console.warn(err2));
+                        showAutoplayPrompt();
+                    });
                 } else {
                     el.stageStreamVideo.muted = true;
                     el.stageStreamVideo.volume = 0;
-                    if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.add('streamer-mode');
-                    if (el.stageVolSlider) el.stageVolSlider.disabled = true;
-                    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔇';
-                    if (el.stageVolLabel) el.stageVolLabel.textContent = 'Kendi Yayının (Sessiz)';
+                    updateStreamVolumeUI(0, true, true);
+                    el.stageStreamVideo.play().catch(e => console.warn("Stream video play error:", e));
                 }
-                el.stageStreamVideo.play().catch(e => console.warn("Stream video play error:", e));
             }
 
             // Sahneyi izleyiciler için otomatik olarak aç
@@ -1107,10 +1278,36 @@ function createPeerConnection(peerId, isInitiator) {
         }
 
         // SES İŞLEME (Ekran/Dizi Yayını Sesi ile Normal Mikrofon Sesini Ayırma)
-        const isScreenAudio = (event.streams && event.streams[0] && event.streams[0].getVideoTracks().length > 0);
+        const isScreenAudio = (event.streams && event.streams[0] && event.streams[0].getVideoTracks().length > 0) ||
+                              (el.stageStreamVideo && el.stageStreamVideo.srcObject && event.streams && event.streams[0] && el.stageStreamVideo.srcObject.id === event.streams[0].id);
+
         if (isScreenAudio) {
-            console.log(`[WebRTC] ${peerId} ekran/dizi ses track'i alındı (stageStreamVideo üzerinden çalınıyor).`);
-            // Bu ses dizi/ekran yayınına aittir. Sahnedeki video oynatıcı (stageStreamVideo) bunu izleyicilere zaten çalar.
+            console.log(`[WebRTC] ${peerId} ekran/dizi ses track'i alındı.`);
+            const isSharingSelf = Boolean(state.sharedBrowser.screenStream);
+            if (!isSharingSelf) {
+                // İzleyici: Eğer video oynatıcıda bu track yoksa ekle ve sesi ayarla
+                if (el.stageStreamVideo) {
+                    if (!el.stageStreamVideo.srcObject && event.streams && event.streams[0]) {
+                        el.stageStreamVideo.srcObject = event.streams[0];
+                    } else if (el.stageStreamVideo.srcObject) {
+                        const existingAudio = el.stageStreamVideo.srcObject.getAudioTracks();
+                        if (!existingAudio.some(t => t.id === event.track.id)) {
+                            try {
+                                el.stageStreamVideo.srcObject.addTrack(event.track);
+                            } catch (e) {
+                                console.warn("Track stageStreamVideo'ya eklenirken hata:", e);
+                            }
+                        }
+                    }
+                    setStreamVolume(currentStreamVolume);
+                }
+            } else {
+                // Yayın yapan kişi: Yankıyı önlemek için kendi yayınının sesini asla çalma
+                if (el.stageStreamVideo) {
+                    el.stageStreamVideo.muted = true;
+                    el.stageStreamVideo.volume = 0;
+                }
+            }
             // Mikrofon audio elementine (audioEl) EKLENMEZ; aksi halde çift ses/yankı olur ve avatarda yanlış yeşil halka yanar.
             return;
         }
@@ -1418,14 +1615,70 @@ function addUserCard(userId, nickname, avatarColor, isMuted = false, isDeafened 
     updateGridItemCount();
 }
 
+function getRoleLabel(role) {
+    if (role === 'admin') return '👑 Admin';
+    if (role === 'moderator') return '🛡️ Mod';
+    return '👤 Üye';
+}
+
+function canIModerate(targetPeerId) {
+    if (targetPeerId === state.myId) return false;
+    if (state.myRole === 'admin') return true;
+    return Boolean(state.myPermissions && (state.myPermissions.can_mute || state.myPermissions.can_kick || state.myPermissions.can_move || state.myPermissions.can_manage_roles));
+}
+
+function applyServerMuteState(isMuted) {
+    state.isServerMuted = isMuted;
+    if (isMuted) {
+        state.isMuted = true;
+        const track = state.localStream?.getAudioTracks()[0];
+        if (track) track.enabled = false;
+        if (el.btnToggleMic) {
+            el.btnToggleMic.classList.add('active-danger');
+            el.btnToggleMic.title = "Sunucu tarafından susturuldunuz (Mikrofon kilitli)";
+        }
+        if (el.micIcon) el.micIcon.textContent = "🔇";
+        if (el.micLabel) el.micLabel.textContent = "Susturuldunuz";
+    } else {
+        if (el.btnToggleMic) {
+            el.btnToggleMic.title = "Mikrofonu Kapat / Aç (Kısayol: M)";
+        }
+    }
+    updateUserCardState(state.myId, state.isMuted, state.isDeafened, false);
+}
+
+function updateDockUserMeta() {
+    if (el.dockUsername) el.dockUsername.textContent = state.nickname || 'Sen';
+    if (el.dockAvatar) {
+        el.dockAvatar.textContent = (state.nickname || 'S').charAt(0).toUpperCase();
+        el.dockAvatar.style.backgroundColor = state.avatarColor;
+    }
+    if (el.dockRoleBadge) {
+        el.dockRoleBadge.textContent = getRoleLabel(state.myRole);
+        el.dockRoleBadge.className = `role-badge role-${state.myRole}`;
+    }
+}
+
 function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = false, isDeafened = false) {
     const card = document.createElement('div');
     card.className = 'user-card';
     card.id = `card-${userId}`;
 
+    const userObj = isSelf ? null : state.allUsers[userId];
+    const role = isSelf ? state.myRole : (userObj?.role || 'user');
+    const isServerMuted = isSelf ? state.isServerMuted : Boolean(userObj?.is_server_muted);
+
+    if (isServerMuted) {
+        card.classList.add('server-muted');
+    }
+
     const initial = (nickname || 'U').charAt(0).toUpperCase();
+    const canMod = !isSelf && canIModerate(userId);
 
     card.innerHTML = `
+        <div class="user-card-actions">
+            ${canMod ? `<button type="button" class="btn-user-manage" data-user-id="${userId}" title="Kullanıcıyı Yönet">⚙️ Yönet</button>` : ''}
+        </div>
         <div class="card-badges">
             <div class="card-badge-icon muted ${isMuted ? '' : 'hidden'}" id="badge-mute-${userId}" title="Mikrofon Kapalı">🔇</div>
             <div class="card-badge-icon deafened ${isDeafened ? '' : 'hidden'}" id="badge-deafen-${userId}" title="Kulaklık Kapalı">🎧</div>
@@ -1439,6 +1692,8 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
         <div class="card-footer">
             <div class="card-username">
                 <span>${escapeHtml(nickname)}</span>
+                <span class="role-badge role-${role}">${getRoleLabel(role)}</span>
+                ${isServerMuted ? '<span class="badge-server-muted" title="Sunucu Genelinde Susturuldu">🔇 Susturuldu</span>' : ''}
                 ${isSelf ? '<span class="tag-you">Sen</span>' : ''}
             </div>
 
@@ -1456,6 +1711,17 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
             ` : ''}
         </div>
     `;
+
+    // Yönet Butonu Dinleyicisi
+    if (canMod) {
+        const btnManage = card.querySelector('.btn-user-manage');
+        if (btnManage) {
+            btnManage.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openModerationModal(userId);
+            });
+        }
+    }
 
     // Arkadaşın sesini ayarlama (Individual Volume Slider) ve DM Başlatma
     if (!isSelf) {
@@ -1550,6 +1816,11 @@ function updateOnlineCount(count) {
 // 7. SES VE GİRİŞ KONTROLLERİ (MUTE, DEAFEN, BAS-KONUŞ)
 // ============================================================================
 async function toggleMute() {
+    if (state.isServerMuted) {
+        alert("🔇 Sunucu genelinde susturuldunuz! Yönetici susturmanızı kaldırana kadar mikrofon açamazsınız.");
+        return;
+    }
+
     if (!state.localStream) {
         try {
             await setupLocalAudioStream();
@@ -2467,6 +2738,110 @@ function escapeHtml(str) {
 // 9.5 CANLI DİZİ, FİLM & EKRAN YAYINI (WEBRTC CANLI YAYIN MODU)
 // ============================================================================
 
+let currentStreamVolume = 100;
+let isStreamMuted = false;
+
+function setStreamVolume(percent) {
+    percent = Math.max(0, Math.min(100, parseInt(percent) || 0));
+
+    // Yayın yapan kişi kendi sesini açamaz (yankı önleme)
+    const isSharingSelf = Boolean(state.sharedBrowser && state.sharedBrowser.screenStream);
+    if (isSharingSelf) {
+        if (el.stageStreamVideo) {
+            el.stageStreamVideo.muted = true;
+            el.stageStreamVideo.volume = 0;
+        }
+        updateStreamVolumeUI(0, true, true);
+        return;
+    }
+
+    currentStreamVolume = percent;
+    isStreamMuted = (percent === 0);
+
+    if (el.stageStreamVideo) {
+        el.stageStreamVideo.volume = percent / 100;
+        el.stageStreamVideo.muted = (percent === 0);
+        if (percent > 0 && el.stageStreamVideo.paused) {
+            el.stageStreamVideo.play().catch(e => console.warn("Video play error:", e));
+        }
+    }
+
+    updateStreamVolumeUI(percent, isStreamMuted, false);
+}
+
+function toggleStreamMute() {
+    const isSharingSelf = Boolean(state.sharedBrowser && state.sharedBrowser.screenStream);
+    if (isSharingSelf) return; // Yayıncı sessiz kalır
+
+    if (isStreamMuted || currentStreamVolume === 0) {
+        // Sesi aç
+        const targetVol = (currentStreamVolume > 0) ? currentStreamVolume : 100;
+        setStreamVolume(targetVol);
+    } else {
+        // Sesi kapat (mute)
+        if (el.stageStreamVideo) {
+            el.stageStreamVideo.muted = true;
+        }
+        isStreamMuted = true;
+        updateStreamVolumeUI(0, true, false);
+    }
+}
+
+function updateStreamVolumeUI(percent, muted, isSelfStreamer) {
+    const icon = (muted || percent === 0) ? '🔇' : (percent > 50 ? '🔊' : '🔉');
+    const labelText = isSelfStreamer ? 'Kendi Yayının (Sessiz)' : `${percent}%`;
+
+    // 1. Üst Bar Kontrolleri
+    if (el.stageVolSlider) {
+        el.stageVolSlider.value = percent;
+        el.stageVolSlider.disabled = isSelfStreamer;
+    }
+    if (el.btnStageVolMute) {
+        el.btnStageVolMute.textContent = icon;
+    }
+    if (el.stageVolLabel) {
+        el.stageVolLabel.textContent = labelText;
+    }
+    if (el.stageStreamVolumeWrap) {
+        if (isSelfStreamer) el.stageStreamVolumeWrap.classList.add('streamer-mode');
+        else el.stageStreamVolumeWrap.classList.remove('streamer-mode');
+    }
+
+    // 2. Video Üstü Floating / Overlay Kontrolleri
+    if (el.overlayVolSlider) {
+        el.overlayVolSlider.value = percent;
+        el.overlayVolSlider.disabled = isSelfStreamer;
+    }
+    if (el.btnOverlayVolMute) {
+        if (el.overlayVolIcon) el.overlayVolIcon.textContent = icon;
+        else el.btnOverlayVolMute.textContent = icon;
+    }
+    if (el.overlayVolLabel) {
+        el.overlayVolLabel.textContent = labelText;
+    }
+    if (el.overlayVolumeWrap) {
+        if (isSelfStreamer) el.overlayVolumeWrap.classList.add('streamer-mode');
+        else el.overlayVolumeWrap.classList.remove('streamer-mode');
+    }
+}
+
+function toggleFullscreen() {
+    const target = el.stageStreamWrap || el.sharedBrowserStage;
+    if (!document.fullscreenElement) {
+        if (target && target.requestFullscreen) {
+            target.requestFullscreen().catch(() => {
+                if (el.sharedBrowserStage && el.sharedBrowserStage.requestFullscreen) {
+                    el.sharedBrowserStage.requestFullscreen();
+                }
+            });
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+}
+
 function openSharedBrowser(url = 'CANLI_YAYIN', mode = 'stream') {
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
         alert("Canlı yayın sahnesini açmak için önce bir odaya bağlı olmalısınız.");
@@ -2511,6 +2886,9 @@ function handleBrowserStateUpdate(bState) {
                 el.stageControllerBadge.textContent = "👑 Yönetici: Sen";
                 el.stageControllerBadge.style.color = "#FEE75C";
             }
+            if (el.overlayStreamTitle) {
+                el.overlayStreamTitle.textContent = "Canlı Yayın (Sen)";
+            }
             if (el.btnStageShareScreen) {
                 el.btnStageShareScreen.style.display = '';
                 if (state.sharedBrowser.screenStream) {
@@ -2528,6 +2906,9 @@ function handleBrowserStateUpdate(bState) {
             if (el.stageControllerBadge) {
                 el.stageControllerBadge.textContent = `👑 Yayıncı: ${ctrlName}`;
                 el.stageControllerBadge.style.color = "#00B0F4";
+            }
+            if (el.overlayStreamTitle) {
+                el.overlayStreamTitle.textContent = `Canlı Yayın (${ctrlName})`;
             }
             if (el.btnStageShareScreen) el.btnStageShareScreen.style.display = 'none';
             if (el.btnStageRequestCtrl) el.btnStageRequestCtrl.classList.remove('hidden');
@@ -2563,13 +2944,15 @@ function updateStageMediaView(url, mode) {
     if (isStreaming) {
         if (el.stageStreamWrap) el.stageStreamWrap.classList.remove('hidden');
         // Eğer yayını paylaşan biz isek sahnedeki video kesinlikle sessiz kalmalıdır (çift sesi önler)
-        if (state.sharedBrowser.screenStream && el.stageStreamVideo) {
-            el.stageStreamVideo.muted = true;
-            el.stageStreamVideo.volume = 0;
-            if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.add('streamer-mode');
-            if (el.stageVolSlider) el.stageVolSlider.disabled = true;
-            if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔇';
-            if (el.stageVolLabel) el.stageVolLabel.textContent = 'Kendi Yayının (Sessiz)';
+        const isSharingSelf = Boolean(state.sharedBrowser.screenStream);
+        if (isSharingSelf) {
+            if (el.stageStreamVideo) {
+                el.stageStreamVideo.muted = true;
+                el.stageStreamVideo.volume = 0;
+            }
+            updateStreamVolumeUI(0, true, true);
+        } else {
+            updateStreamVolumeUI(currentStreamVolume, isStreamMuted, false);
         }
     } else {
         if (el.stageEmptyView) el.stageEmptyView.classList.remove('hidden');
@@ -2603,14 +2986,7 @@ async function startScreenShare() {
             el.stageStreamVideo.volume = 0;
             el.stageStreamVideo.play().catch(e => console.warn(e));
         }
-
-        if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.add('streamer-mode');
-        if (el.stageVolSlider) el.stageVolSlider.disabled = true;
-        if (el.btnStageVolMute) {
-            el.btnStageVolMute.textContent = '🔇';
-            el.btnStageVolMute.title = 'Kendi yayınınız - Yankıyı önlemek için kanal sesi otomatik kapalıdır';
-        }
-        if (el.stageVolLabel) el.stageVolLabel.textContent = 'Kendi Yayının (Sessiz)';
+        updateStreamVolumeUI(0, true, true);
 
         // WebRTC üzerinden diğer kullanıcılara video ve sekme sesi track'lerini ekle ve yeni offer gönder
         const videoTrack = stream.getVideoTracks()[0];
@@ -2683,10 +3059,7 @@ function stopScreenShare() {
         el.stageStreamVideo.srcObject = null;
         el.stageStreamVideo.muted = true;
     }
-    if (el.stageStreamVolumeWrap) el.stageStreamVolumeWrap.classList.remove('streamer-mode');
-    if (el.stageVolSlider) el.stageVolSlider.disabled = false;
-    if (el.stageVolLabel) el.stageVolLabel.textContent = '100%';
-    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔊';
+    updateStreamVolumeUI(currentStreamVolume, isStreamMuted, false);
 
     // WebRTC peer bağlantılarından video ve ekran sesi sender'larını temizle ve güncelle
     const localMicTrack = state.localStream?.getAudioTracks()[0];
@@ -2821,20 +3194,508 @@ function renderStageSpeakers() {
 }
 
 // ============================================================================
+// 10. KİMLİK DOĞRULAMA, OTURUM & PROFİL YÖNETİMİ
+// ============================================================================
+async function checkSavedAuth() {
+    const token = localStorage.getItem('agalar_token');
+    if (!token) {
+        showGuestAuthView();
+        return false;
+    }
+
+    try {
+        const res = await fetch(`/api/auth/me?token=${encodeURIComponent(token)}`);
+        const data = await res.json();
+        if (data.success && data.user) {
+            state.token = token;
+            state.currentUser = data.user;
+            state.nickname = data.user.nickname;
+            state.avatarColor = data.user.avatar_color || '#5865F2';
+            state.myRole = data.user.role || 'user';
+            state.myPermissions = {
+                can_mute: Boolean(data.user.can_mute),
+                can_kick: Boolean(data.user.can_kick),
+                can_move: Boolean(data.user.can_move),
+                can_manage_roles: Boolean(data.user.can_manage_roles)
+            };
+            if (el.nicknameInput) el.nicknameInput.value = state.nickname;
+            showLoggedInView(data.user);
+            return true;
+        } else {
+            localStorage.removeItem('agalar_token');
+            state.token = null;
+            showGuestAuthView();
+            return false;
+        }
+    } catch (e) {
+        console.warn("Auth kontrol hatası:", e);
+        const savedNick = localStorage.getItem('agalar_nick');
+        if (savedNick) {
+            state.nickname = savedNick;
+            if (el.nicknameInput) el.nicknameInput.value = savedNick;
+        }
+        return false;
+    }
+}
+
+function showGuestAuthView() {
+    if (el.authGuestView) el.authGuestView.classList.remove('hidden');
+    if (el.authUserView) el.authUserView.classList.add('hidden');
+}
+
+function showLoggedInView(user) {
+    if (el.authGuestView) el.authGuestView.classList.add('hidden');
+    if (el.authUserView) el.authUserView.classList.remove('hidden');
+
+    if (el.lobbyUserAvatar) {
+        el.lobbyUserAvatar.textContent = (user.nickname || 'A').charAt(0).toUpperCase();
+        el.lobbyUserAvatar.style.backgroundColor = user.avatar_color || '#5865F2';
+    }
+    if (el.lobbyUserName) el.lobbyUserName.textContent = user.nickname;
+    if (el.lobbyUserRoleBadge) {
+        el.lobbyUserRoleBadge.textContent = getRoleLabel(user.role);
+        el.lobbyUserRoleBadge.className = `role-badge role-${user.role}`;
+    }
+    if (el.lobbyUserEmail) el.lobbyUserEmail.textContent = user.email || '';
+
+    if (el.nicknameInput) el.nicknameInput.value = user.nickname;
+    state.nickname = user.nickname;
+    state.avatarColor = user.avatar_color || '#5865F2';
+    updateDockUserMeta();
+}
+
+async function doLogin(email, password) {
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!data.success) {
+            showError(data.detail || 'Giriş yapılamadı.');
+            return false;
+        }
+
+        localStorage.setItem('agalar_token', data.token);
+        localStorage.setItem('agalar_nick', data.user.nickname);
+        localStorage.setItem('agalar_color', data.user.avatar_color);
+        localStorage.setItem('agalar_logged_in', '1');
+
+        state.token = data.token;
+        state.currentUser = data.user;
+        state.nickname = data.user.nickname;
+        state.avatarColor = data.user.avatar_color;
+        state.myRole = data.user.role;
+        state.myPermissions = {
+            can_mute: Boolean(data.user.can_mute),
+            can_kick: Boolean(data.user.can_kick),
+            can_move: Boolean(data.user.can_move),
+            can_manage_roles: Boolean(data.user.can_manage_roles)
+        };
+
+        showLoggedInView(data.user);
+        hideError();
+        return true;
+    } catch (e) {
+        showError('Sunucu bağlantı hatası: ' + e.message);
+        return false;
+    }
+}
+
+async function doRegister(nickname, email, password, avatar_color) {
+    try {
+        const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nickname, email, password, avatar_color })
+        });
+        const data = await res.json();
+        if (!data.success) {
+            showError(data.detail || 'Kayıt başarısız.');
+            return false;
+        }
+
+        localStorage.setItem('agalar_token', data.token);
+        localStorage.setItem('agalar_nick', data.user.nickname);
+        localStorage.setItem('agalar_color', data.user.avatar_color);
+        localStorage.setItem('agalar_logged_in', '1');
+
+        state.token = data.token;
+        state.currentUser = data.user;
+        state.nickname = data.user.nickname;
+        state.avatarColor = data.user.avatar_color;
+        state.myRole = data.user.role;
+        state.myPermissions = {
+            can_mute: Boolean(data.user.can_mute),
+            can_kick: Boolean(data.user.can_kick),
+            can_move: Boolean(data.user.can_move),
+            can_manage_roles: Boolean(data.user.can_manage_roles)
+        };
+
+        showLoggedInView(data.user);
+        hideError();
+        return true;
+    } catch (e) {
+        showError('Kayıt hatası: ' + e.message);
+        return false;
+    }
+}
+
+async function doLogout() {
+    if (state.token) {
+        try {
+            await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: state.token })
+            });
+        } catch(e) {}
+    }
+    localStorage.removeItem('agalar_token');
+    localStorage.removeItem('agalar_logged_in');
+    state.token = null;
+    state.currentUser = null;
+    state.myRole = 'user';
+    state.myPermissions = { can_mute: false, can_kick: false, can_move: false, can_manage_roles: false };
+    showGuestAuthView();
+}
+
+function openEditProfileModal() {
+    if (!el.editProfileModal) return;
+    if (el.inputEditNickname) el.inputEditNickname.value = state.nickname || '';
+    if (el.editProfileColors) {
+        el.editProfileColors.querySelectorAll('.color-swatch').forEach(s => {
+            if (s.dataset.color === state.avatarColor) s.classList.add('active');
+            else s.classList.remove('active');
+        });
+    }
+    el.editProfileModal.classList.remove('hidden');
+}
+
+function closeEditProfileModal() {
+    if (el.editProfileModal) el.editProfileModal.classList.add('hidden');
+}
+
+async function updateProfile(newNick, newColor) {
+    if (!state.token) {
+        state.nickname = newNick;
+        state.avatarColor = newColor;
+        localStorage.setItem('agalar_nick', newNick);
+        localStorage.setItem('agalar_color', newColor);
+        if (el.nicknameInput) el.nicknameInput.value = newNick;
+        updateDockUserMeta();
+        syncVoiceGrid();
+        return true;
+    }
+
+    try {
+        const res = await fetch('/api/auth/update-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token: state.token,
+                nickname: newNick,
+                avatar_color: newColor
+            })
+        });
+        const data = await res.json();
+        if (data.success && data.user) {
+            state.currentUser = data.user;
+            state.nickname = data.user.nickname;
+            state.avatarColor = data.user.avatar_color;
+            localStorage.setItem('agalar_nick', state.nickname);
+            localStorage.setItem('agalar_color', state.avatarColor);
+            if (el.nicknameInput) el.nicknameInput.value = state.nickname;
+            showLoggedInView(data.user);
+            updateDockUserMeta();
+
+            // WebSocket açıksa isim değişimini herkese duyur
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({
+                    type: 'user-change-nickname',
+                    new_nickname: state.nickname
+                }));
+            }
+            syncVoiceGrid();
+            return true;
+        } else {
+            alert(data.detail || 'Profil güncellenemedi.');
+            return false;
+        }
+    } catch (e) {
+        alert('Hata: ' + e.message);
+        return false;
+    }
+}
+
+// ============================================================================
+// 11. ADMİN & KULLANICI MODERASYONU İŞLEMLERİ
+// ============================================================================
+function openModerationModal(peerId) {
+    const user = state.allUsers[peerId];
+    if (!user) return;
+
+    state.activeModTargetId = peerId;
+
+    if (el.modTargetAvatar) {
+        el.modTargetAvatar.textContent = (user.nickname || 'U').charAt(0).toUpperCase();
+        el.modTargetAvatar.style.backgroundColor = user.avatar_color || '#5865F2';
+    }
+    if (el.modTargetName) el.modTargetName.textContent = user.nickname;
+    if (el.modTargetRole) {
+        const role = user.role || 'user';
+        el.modTargetRole.textContent = getRoleLabel(role);
+        el.modTargetRole.className = `role-badge role-${role}`;
+    }
+    if (el.modTargetStatus) {
+        el.modTargetStatus.textContent = state.channelNames[user.voice_channel] || user.voice_channel;
+    }
+
+    // Mute butonu durumu
+    const isTargetServerMuted = Boolean(user.is_server_muted);
+    if (el.btnModToggleMute && el.modMuteText) {
+        if (isTargetServerMuted) {
+            el.btnModToggleMute.className = 'btn-mod-action success';
+            el.modMuteText.textContent = "🔊 Susturmayı Kaldır";
+        } else {
+            el.btnModToggleMute.className = 'btn-mod-action danger';
+            el.modMuteText.textContent = "🔇 Sunucu Genelinde Sustur";
+        }
+    }
+
+    // Kanal seçimi
+    if (el.selectModChannel) {
+        el.selectModChannel.value = user.voice_channel || 'channel-1';
+    }
+
+    // Yetkileri Yönetme bölümü (Sadece Admin veya can_manage_roles olanlar)
+    const canManageRoles = (state.myRole === 'admin' || (state.myPermissions && state.myPermissions.can_manage_roles));
+    if (el.modPermissionsSection) {
+        if (canManageRoles) {
+            el.modPermissionsSection.classList.remove('hidden');
+            if (el.selectModRole) el.selectModRole.value = user.role || 'user';
+            if (el.chkPermMute) el.chkPermMute.checked = Boolean(user.can_mute);
+            if (el.chkPermKick) el.chkPermKick.checked = Boolean(user.can_kick);
+            if (el.chkPermMove) el.chkPermMove.checked = Boolean(user.can_move);
+            if (el.chkPermManageRoles) el.chkPermManageRoles.checked = Boolean(user.can_manage_roles);
+        } else {
+            el.modPermissionsSection.classList.add('hidden');
+        }
+    }
+
+    if (el.modUserModal) el.modUserModal.classList.remove('hidden');
+}
+
+function closeModerationModal() {
+    state.activeModTargetId = null;
+    if (el.modUserModal) el.modUserModal.classList.add('hidden');
+}
+
+function updateModModalIfOpen(peerId) {
+    if (state.activeModTargetId === peerId && el.modUserModal && !el.modUserModal.classList.contains('hidden')) {
+        openModerationModal(peerId);
+    }
+}
+
+function sendAdminMute(peerId, shouldMute) {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    state.ws.send(JSON.stringify({
+        type: 'admin-mute-user',
+        target_id: peerId,
+        mute: shouldMute
+    }));
+}
+
+function sendAdminMove(peerId, targetChannel) {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    state.ws.send(JSON.stringify({
+        type: 'admin-move-user',
+        target_id: peerId,
+        target_channel: targetChannel
+    }));
+    closeModerationModal();
+}
+
+function sendAdminKick(peerId) {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    if (!confirm('Bu kullanıcıyı odadan atmak istediğinize emin misiniz?')) return;
+    state.ws.send(JSON.stringify({
+        type: 'admin-kick-user',
+        target_id: peerId,
+        reason: 'Yönetici tarafından odadan atıldı'
+    }));
+    closeModerationModal();
+}
+
+function sendAdminPermissions(peerId, role, canMute, canKick, canMove, canManageRoles) {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    state.ws.send(JSON.stringify({
+        type: 'admin-set-permissions',
+        target_id: peerId,
+        role: role,
+        can_mute: canMute,
+        can_kick: canKick,
+        can_move: canMove,
+        can_manage_roles: canManageRoles
+    }));
+    alert('Yetkiler kaydedildi ve uygulandı!');
+    closeModerationModal();
+}
 // 10. OLAY DİNLEYİCİLERİ (EVENT LISTENERS)
 // ============================================================================
 function initEventListeners() {
     // Emoji Seçici Başlat
     initEmojiPicker();
 
+    // Auth Sekmeleri (Giriş / Kayıt)
+    if (el.tabBtnLogin && el.tabBtnRegister) {
+        el.tabBtnLogin.addEventListener('click', () => {
+            el.tabBtnLogin.classList.add('active');
+            el.tabBtnRegister.classList.remove('active');
+            if (el.authLoginForm) el.authLoginForm.classList.remove('hidden');
+            if (el.authRegisterForm) el.authRegisterForm.classList.add('hidden');
+        });
+        el.tabBtnRegister.addEventListener('click', () => {
+            el.tabBtnRegister.classList.add('active');
+            el.tabBtnLogin.classList.remove('active');
+            if (el.authRegisterForm) el.authRegisterForm.classList.remove('hidden');
+            if (el.authLoginForm) el.authLoginForm.classList.add('hidden');
+        });
+    }
+
+    // Giriş Formu
+    if (el.authLoginForm) {
+        el.authLoginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = el.authLoginEmail.value.trim();
+            const password = el.authLoginPassword.value;
+            if (!email || !password) return;
+            await doLogin(email, password);
+        });
+    }
+
+    // Hızlı Admin Girişi
+    if (el.btnQuickAdmin) {
+        el.btnQuickAdmin.addEventListener('click', async () => {
+            if (el.authLoginEmail) el.authLoginEmail.value = 'admin@agalar.com';
+            if (el.authLoginPassword) el.authLoginPassword.value = 'admin123';
+            await doLogin('admin@agalar.com', 'admin123');
+        });
+    }
+
+    // Kayıt Formu
+    if (el.authRegisterForm) {
+        let selectedRegColor = '#5865F2';
+        if (el.authRegColors) {
+            el.authRegColors.addEventListener('click', (e) => {
+                const swatch = e.target.closest('.color-swatch');
+                if (!swatch) return;
+                el.authRegColors.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+                swatch.classList.add('active');
+                selectedRegColor = swatch.dataset.color || '#5865F2';
+            });
+        }
+
+        el.authRegisterForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nick = el.authRegNick.value.trim();
+            const email = el.authRegEmail.value.trim();
+            const password = el.authRegPassword.value;
+            if (!nick || !email || !password) return;
+            await doRegister(nick, email, password, selectedRegColor);
+        });
+    }
+
+    // Oturumu Kapat (Çıkış) Butonu
+    if (el.btnLobbyLogout) {
+        el.btnLobbyLogout.addEventListener('click', () => {
+            if (confirm("Oturumu kapatmak istediğinize emin misiniz?")) {
+                doLogout();
+            }
+        });
+    }
+
+    // Profil Düzenleme Modalı Açma
+    if (el.btnLobbyEditNick) {
+        el.btnLobbyEditNick.addEventListener('click', openEditProfileModal);
+    }
+    if (el.btnDockEditName) {
+        el.btnDockEditName.addEventListener('click', openEditProfileModal);
+    }
+    if (el.btnCloseEditProfile) {
+        el.btnCloseEditProfile.addEventListener('click', closeEditProfileModal);
+    }
+    if (el.btnCancelEditProfile) {
+        el.btnCancelEditProfile.addEventListener('click', closeEditProfileModal);
+    }
+    if (el.editProfileColors) {
+        el.editProfileColors.addEventListener('click', (e) => {
+            const swatch = e.target.closest('.color-swatch');
+            if (!swatch) return;
+            el.editProfileColors.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            swatch.classList.add('active');
+        });
+    }
+    if (el.editProfileForm) {
+        el.editProfileForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newNick = el.inputEditNickname ? el.inputEditNickname.value.trim() : '';
+            const activeSwatch = el.editProfileColors ? el.editProfileColors.querySelector('.color-swatch.active') : null;
+            const newColor = activeSwatch ? activeSwatch.dataset.color : state.avatarColor;
+            if (newNick) {
+                const ok = await updateProfile(newNick, newColor);
+                if (ok) closeEditProfileModal();
+            }
+        });
+    }
+
+    // Moderasyon Modalı İşlemleri
+    if (el.btnCloseModModal) {
+        el.btnCloseModModal.addEventListener('click', closeModerationModal);
+    }
+    if (el.btnModToggleMute) {
+        el.btnModToggleMute.addEventListener('click', () => {
+            if (!state.activeModTargetId) return;
+            const user = state.allUsers[state.activeModTargetId];
+            const currentMute = user ? Boolean(user.is_server_muted) : false;
+            sendAdminMute(state.activeModTargetId, !currentMute);
+        });
+    }
+    if (el.btnModKick) {
+        el.btnModKick.addEventListener('click', () => {
+            if (!state.activeModTargetId) return;
+            sendAdminKick(state.activeModTargetId);
+        });
+    }
+    if (el.btnModMove) {
+        el.btnModMove.addEventListener('click', () => {
+            if (!state.activeModTargetId || !el.selectModChannel) return;
+            sendAdminMove(state.activeModTargetId, el.selectModChannel.value);
+        });
+    }
+    if (el.btnModSavePermissions) {
+        el.btnModSavePermissions.addEventListener('click', () => {
+            if (!state.activeModTargetId) return;
+            const role = el.selectModRole ? el.selectModRole.value : 'user';
+            const canMute = el.chkPermMute ? el.chkPermMute.checked : false;
+            const canKick = el.chkPermKick ? el.chkPermKick.checked : false;
+            const canMove = el.chkPermMove ? el.chkPermMove.checked : false;
+            const canManageRoles = el.chkPermManageRoles ? el.chkPermManageRoles.checked : false;
+            sendAdminPermissions(state.activeModTargetId, role, canMute, canKick, canMove, canManageRoles);
+        });
+    }
+
     // Form Katılma
-    el.joinForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        try {
-            sessionStorage.removeItem('agalar_manual_leave');
-        } catch (e) {}
-        joinRoom(false);
-    });
+    if (el.joinForm) {
+        el.joinForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            try {
+                sessionStorage.removeItem('agalar_manual_leave');
+            } catch (e) {}
+            joinRoom(false);
+        });
+    }
 
     // Ortak Tarayıcı / Birlikte İzle Başlatma & Kapatma Butonları
     if (el.btnSharedBrowserToggle) {
@@ -2872,36 +3733,39 @@ function initEventListeners() {
 
 
     // Sahne Yayın Sesi Kontrolleri (İzleyiciler için ses ayarı, yayıncı için yankı önleme)
+    // 1. Üst bar ses kontrolleri
     if (el.stageVolSlider) {
         el.stageVolSlider.addEventListener('input', (e) => {
-            if (state.sharedBrowser.screenStream) return; // Yayın yapan kişi kendi sesini açamaz (yankı önleme)
-            const val = parseInt(e.target.value);
-            if (el.stageStreamVideo) {
-                el.stageStreamVideo.volume = val / 100;
-                if (val === 0) {
-                    el.stageStreamVideo.muted = true;
-                    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔇';
-                } else {
-                    el.stageStreamVideo.muted = false;
-                    if (el.btnStageVolMute) el.btnStageVolMute.textContent = '🔊';
-                }
-            }
-            if (el.stageVolLabel) el.stageVolLabel.textContent = `${val}%`;
+            setStreamVolume(e.target.value);
         });
     }
 
     if (el.btnStageVolMute) {
         el.btnStageVolMute.addEventListener('click', () => {
-            if (state.sharedBrowser.screenStream) return; // Yayın yapan kişi kendi sesini açamaz
-            if (!el.stageStreamVideo) return;
-            el.stageStreamVideo.muted = !el.stageStreamVideo.muted;
-            if (el.stageStreamVideo.muted) {
-                el.btnStageVolMute.textContent = '🔇';
-                if (el.stageVolLabel) el.stageVolLabel.textContent = '0%';
-            } else {
-                el.btnStageVolMute.textContent = '🔊';
-                const val = el.stageVolSlider ? parseInt(el.stageVolSlider.value) : 100;
-                if (el.stageVolLabel) el.stageVolLabel.textContent = `${val}%`;
+            toggleStreamMute();
+        });
+    }
+
+    // 2. Video üstü floating / overlay ses kontrolleri
+    if (el.overlayVolSlider) {
+        el.overlayVolSlider.addEventListener('input', (e) => {
+            setStreamVolume(e.target.value);
+        });
+    }
+
+    if (el.btnOverlayVolMute) {
+        el.btnOverlayVolMute.addEventListener('click', () => {
+            toggleStreamMute();
+        });
+    }
+
+    // 3. Video tıklama ile un-mute ve oynatma desteği
+    if (el.stageStreamVideo) {
+        el.stageStreamVideo.addEventListener('click', () => {
+            const isSharingSelf = Boolean(state.sharedBrowser && state.sharedBrowser.screenStream);
+            if (!isSharingSelf && (el.stageStreamVideo.muted || el.stageStreamVideo.paused)) {
+                setStreamVolume(currentStreamVolume > 0 ? currentStreamVolume : 100);
+                hideAutoplayPrompt();
             }
         });
     }
@@ -2937,19 +3801,12 @@ function initEventListeners() {
         });
     }
 
-    // Tam Ekran Modu Butonu
+    // Tam Ekran Modu Butonları (Üst bar ve video overlay bar)
     if (el.btnStageFullscreen) {
-        el.btnStageFullscreen.addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                if (el.sharedBrowserStage.requestFullscreen) {
-                    el.sharedBrowserStage.requestFullscreen();
-                }
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                }
-            }
-        });
+        el.btnStageFullscreen.addEventListener('click', toggleFullscreen);
+    }
+    if (el.btnOverlayFullscreen) {
+        el.btnOverlayFullscreen.addEventListener('click', toggleFullscreen);
     }
 
     // Kontrol Talebi Onayla / Reddet Modalı Butonları
@@ -3447,17 +4304,20 @@ function runSplashScreenAnimation() {
 // ============================================================================
 // 11. BAŞLATICI (INITIALIZATION)
 // ============================================================================
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.search);
+
+    // Oturum Kontrolü (Token varsa sunucudan profil ve yetkileri çek)
+    const isAuthenticated = await checkSavedAuth();
 
     // Kayıtlı kullanıcı adı ve oda varsa otomatik doldur
     const savedNick = localStorage.getItem('agalar_nick');
     if (params.get('nick')) {
         el.nicknameInput.value = params.get('nick');
-    } else if (savedNick) {
+        state.nickname = params.get('nick');
+    } else if (savedNick && !isAuthenticated) {
         el.nicknameInput.value = savedNick;
-    } else {
-        el.nicknameInput.value = "Misafir";
+        state.nickname = savedNick;
     }
 
     const savedRoom = localStorage.getItem('agalar_room');
@@ -3468,7 +4328,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     const savedColor = localStorage.getItem('agalar_color');
-    if (savedColor) {
+    if (savedColor && !isAuthenticated) {
         state.avatarColor = savedColor;
         document.querySelectorAll('.color-swatch').forEach(s => {
             if (s.dataset.color === savedColor) {
@@ -3501,16 +4361,17 @@ window.addEventListener('DOMContentLoaded', () => {
     // Otomatik Giriş:
     // Daha önce giriş yapıldıysa "Odaya Katıl" basmaya gerek kalmadan doğrudan ses kanalları ekranına geç!
     const isManualLeave = sessionStorage.getItem('agalar_manual_leave') === '1';
-    const hasPreviousSession = Boolean(localStorage.getItem('agalar_logged_in') === '1' || localStorage.getItem('agalar_nick'));
+    const hasPreviousSession = Boolean(state.token || localStorage.getItem('agalar_logged_in') === '1');
 
     if (hasPreviousSession && !isManualLeave) {
-        console.log("⚡ Kayıtlı oturum tespit edildi (" + (savedNick || 'Misafir') + "). Odaya katıl butonuna basmaya gerek kalmadan doğrudan ses kanalları ekranı açılıyor...");
+        const curNick = state.nickname || el.nicknameInput.value.trim() || 'Misafir';
+        console.log("⚡ Kayıtlı oturum tespit edildi (" + curNick + "). Odaya katıl butonuna basmaya gerek kalmadan doğrudan ses kanalları ekranı açılıyor...");
 
         // Ekran kırpışmasını önlemek için lobi ekranını hemen gizle ve oda ekranını göster
         el.lobbyScreen.classList.add('hidden');
         el.roomScreen.classList.remove('hidden');
 
-        const nick = el.nicknameInput.value.trim() || 'Misafir';
+        const nick = curNick;
         const room = el.roomInput.value.trim() || 'gaming';
         const ch = (el.selectInitialChannel && el.selectInitialChannel.value) || savedChannel || 'channel-1';
         state.nickname = nick;
@@ -3520,11 +4381,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (el.currentRoomName) {
             el.currentRoomName.textContent = `${room} • ${state.channelNames[ch] || 'Ses Odası 1'}`;
         }
-        if (el.dockUsername) el.dockUsername.textContent = nick;
-        if (el.dockAvatar) {
-            el.dockAvatar.textContent = nick.charAt(0).toUpperCase();
-            el.dockAvatar.style.backgroundColor = state.avatarColor;
-        }
+        updateDockUserMeta();
         renderVoiceChannelsUI();
 
         // Odaya ve ses kanallarına arka planda anında bağlan
