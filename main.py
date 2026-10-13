@@ -8,7 +8,10 @@ import sqlite3
 import uuid
 import aiofiles
 import os
+import hashlib
+import secrets
 from typing import Dict, Any, Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
@@ -34,17 +37,55 @@ import shutil
 for _fname in ["index.html", "style.css", "app.js", "manifest.json", "sw.js", "icon-192.png", "icon-512.png", "icon.svg", "logo.png", "logo.jpg", "favicon.ico"]:
     _root_f = BASE_DIR / _fname
     _static_f = STATIC_DIR / _fname
-    if _root_f.exists() and not _static_f.exists():
+    if _root_f.exists() and _static_f.exists():
         try:
-            shutil.copy(_root_f, _static_f)
+            if _root_f.stat().st_mtime > _static_f.stat().st_mtime:
+                shutil.copy2(_root_f, _static_f)
+            elif _static_f.stat().st_mtime > _root_f.stat().st_mtime:
+                shutil.copy2(_static_f, _root_f)
+        except Exception as _e:
+            logger.warning(f"Dosya senkronizasyon hatası ({_fname}): {_e}")
+    elif _root_f.exists() and not _static_f.exists():
+        try:
+            shutil.copy2(_root_f, _static_f)
             logger.info(f"Root static file {_fname} -> static/{_fname} kopyalandı.")
         except Exception as _e:
             logger.warning(f"Dosya kopyalama hatası ({_fname}): {_e}")
     elif _static_f.exists() and not _root_f.exists():
         try:
-            shutil.copy(_static_f, _root_f)
+            shutil.copy2(_static_f, _root_f)
         except Exception:
             pass
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    nickname: str
+    avatar_color: Optional[str] = "#5865F2"
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UpdateProfileRequest(BaseModel):
+    token: str
+    nickname: Optional[str] = None
+    avatar_color: Optional[str] = None
+
+
+class UpdatePermissionsRequest(BaseModel):
+    token: str
+    target_user_id: int
+    can_mute: bool
+    can_kick: bool
+    can_move: bool
+
+
+class LogoutRequest(BaseModel):
+    token: str
 
 
 class DatabaseManager:
@@ -69,7 +110,237 @@ class DatabaseManager:
                     created_at REAL NOT NULL
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE COLLATE NOCASE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    nickname TEXT NOT NULL,
+                    avatar_color TEXT DEFAULT '#5865F2',
+                    role TEXT DEFAULT 'user',
+                    can_mute INTEGER DEFAULT 0,
+                    can_kick INTEGER DEFAULT 0,
+                    can_move INTEGER DEFAULT 0,
+                    can_manage_roles INTEGER DEFAULT 0,
+                    created_at REAL NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    last_seen REAL NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
             conn.commit()
+
+        self._ensure_default_admin()
+
+    def _hash_password(self, password: str, salt: Optional[str] = None) -> str:
+        if not salt:
+            salt = secrets.token_hex(16)
+        hashed = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+        return f"{salt}:{hashed}"
+
+    def _verify_password(self, password: str, stored_hash: str) -> bool:
+        try:
+            salt, _ = stored_hash.split(":", 1)
+            return self._hash_password(password, salt) == stored_hash
+        except Exception:
+            return False
+
+    def _ensure_default_admin(self):
+        admin_email = "admin@agalar.com"
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE email = ?", (admin_email,))
+            if not cursor.fetchone():
+                now = time.time()
+                pwd_hash = self._hash_password("admin123")
+                cursor.execute("""
+                    INSERT INTO users (email, password_hash, nickname, avatar_color, role, can_mute, can_kick, can_move, can_manage_roles, created_at)
+                    VALUES (?, ?, ?, ?, 'admin', 1, 1, 1, 1, ?)
+                """, (admin_email, pwd_hash, "Agalar Admin", "#FEE75C", now))
+                conn.commit()
+                logger.info("👑 Varsayılan Admin hesabı oluşturuldu: admin@agalar.com (Şifre: admin123)")
+
+    def create_user(self, email: str, password: str, nickname: str, avatar_color: str = "#5865F2") -> dict:
+        email = email.strip().lower()
+        nickname = nickname.strip()
+        if not email or "@" not in email:
+            raise ValueError("Geçerli bir e-posta adresi giriniz.")
+        if len(password) < 4:
+            raise ValueError("Şifre en az 4 karakter olmalıdır.")
+        if not nickname:
+            nickname = email.split("@")[0]
+
+        now = time.time()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+            if cursor.fetchone():
+                raise ValueError("Bu e-posta adresi ile zaten bir hesap kayıtlı.")
+
+            # Sistemdeki kullanıcı sayısına bak (eğer ilk kullanıcı ise otomatik admin yap)
+            cursor.execute("SELECT COUNT(*) as cnt FROM users")
+            user_count = cursor.fetchone()["cnt"]
+            is_admin = (user_count == 0)
+
+            pwd_hash = self._hash_password(password)
+            role = "admin" if is_admin else "user"
+            can_mute = 1 if is_admin else 0
+            can_kick = 1 if is_admin else 0
+            can_move = 1 if is_admin else 0
+            can_manage = 1 if is_admin else 0
+
+            cursor.execute("""
+                INSERT INTO users (email, password_hash, nickname, avatar_color, role, can_mute, can_kick, can_move, can_manage_roles, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (email, pwd_hash, nickname, avatar_color, role, can_mute, can_kick, can_move, can_manage, now))
+            conn.commit()
+            user_id = cursor.lastrowid
+
+            token = secrets.token_hex(32)
+            cursor.execute("""
+                INSERT INTO sessions (token, user_id, created_at, last_seen)
+                VALUES (?, ?, ?, ?)
+            """, (token, user_id, now, now))
+            conn.commit()
+
+            return {
+                "token": token,
+                "user": {
+                    "id": user_id,
+                    "email": email,
+                    "nickname": nickname,
+                    "avatar_color": avatar_color,
+                    "role": role,
+                    "can_mute": bool(can_mute),
+                    "can_kick": bool(can_kick),
+                    "can_move": bool(can_move),
+                    "can_manage_roles": bool(can_manage)
+                }
+            }
+
+    def login_user(self, email: str, password: str) -> dict:
+        email = email.strip().lower()
+        now = time.time()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+            user = cursor.fetchone()
+            if not user or not self._verify_password(password, user["password_hash"]):
+                raise ValueError("Hatalı e-posta veya şifre.")
+
+            token = secrets.token_hex(32)
+            cursor.execute("""
+                INSERT INTO sessions (token, user_id, created_at, last_seen)
+                VALUES (?, ?, ?, ?)
+            """, (token, user["id"], now, now))
+            conn.commit()
+
+            return {
+                "token": token,
+                "user": {
+                    "id": user["id"],
+                    "email": user["email"],
+                    "nickname": user["nickname"],
+                    "avatar_color": user["avatar_color"],
+                    "role": user["role"],
+                    "can_mute": bool(user["can_mute"]),
+                    "can_kick": bool(user["can_kick"]),
+                    "can_move": bool(user["can_move"]),
+                    "can_manage_roles": bool(user["can_manage_roles"])
+                }
+            }
+
+    def get_user_by_token(self, token: str) -> Optional[dict]:
+        if not token:
+            return None
+        now = time.time()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT u.* FROM users u
+                JOIN sessions s ON u.id = s.user_id
+                WHERE s.token = ?
+            """, (token,))
+            user = cursor.fetchone()
+            if user:
+                cursor.execute("UPDATE sessions SET last_seen = ? WHERE token = ?", (now, token))
+                conn.commit()
+                return {
+                    "id": user["id"],
+                    "email": user["email"],
+                    "nickname": user["nickname"],
+                    "avatar_color": user["avatar_color"],
+                    "role": user["role"],
+                    "can_mute": bool(user["can_mute"]),
+                    "can_kick": bool(user["can_kick"]),
+                    "can_move": bool(user["can_move"]),
+                    "can_manage_roles": bool(user["can_manage_roles"])
+                }
+            return None
+
+    def get_user_by_id(self, user_id: int) -> Optional[dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            if user:
+                return {
+                    "id": user["id"],
+                    "email": user["email"],
+                    "nickname": user["nickname"],
+                    "avatar_color": user["avatar_color"],
+                    "role": user["role"],
+                    "can_mute": bool(user["can_mute"]),
+                    "can_kick": bool(user["can_kick"]),
+                    "can_move": bool(user["can_move"]),
+                    "can_manage_roles": bool(user["can_manage_roles"])
+                }
+            return None
+
+    def update_profile(self, user_id: int, nickname: Optional[str] = None, avatar_color: Optional[str] = None) -> Optional[dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            updates = []
+            params = []
+            if nickname and nickname.strip():
+                updates.append("nickname = ?")
+                params.append(nickname.strip()[:25])
+            if avatar_color and avatar_color.strip():
+                updates.append("avatar_color = ?")
+                params.append(avatar_color.strip())
+            if not updates:
+                return self.get_user_by_id(user_id)
+            params.append(user_id)
+            conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
+            return self.get_user_by_id(user_id)
+
+    def update_permissions(self, target_user_id: int, can_mute: bool, can_kick: bool, can_move: bool, role: Optional[str] = None) -> Optional[dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            role_val = role if role else ("moderator" if (can_mute or can_kick or can_move) else "user")
+            conn.execute("""
+                UPDATE users
+                SET can_mute = ?, can_kick = ?, can_move = ?, role = CASE WHEN role = 'admin' THEN 'admin' ELSE ? END
+                WHERE id = ?
+            """, (1 if can_mute else 0, 1 if can_kick else 0, 1 if can_move else 0, role_val, target_user_id))
+            conn.commit()
+            return self.get_user_by_id(target_user_id)
+
+    def logout_token(self, token: str) -> bool:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            conn.commit()
+            return True
 
     def save_message(self, room_id: str, sender_id: str, nickname: str, avatar_color: str,
                      text: Optional[str], image_url: Optional[str], is_private: bool,
@@ -596,6 +867,76 @@ exit
     )
 
 
+@app.post("/api/auth/register")
+async def api_register(data: RegisterRequest):
+    try:
+        res = db.create_user(
+            email=data.email,
+            password=data.password,
+            nickname=data.nickname,
+            avatar_color=data.avatar_color or "#5865F2"
+        )
+        return {"success": True, **res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Register error: {e}")
+        raise HTTPException(status_code=500, detail="Kayıt işlemi sırasında bir hata oluştu.")
+
+
+@app.post("/api/auth/login")
+async def api_login(data: LoginRequest):
+    try:
+        res = db.login_user(email=data.email, password=data.password)
+        return {"success": True, **res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Giriş yapılamadı.")
+
+
+@app.get("/api/auth/me")
+async def api_get_me(token: Optional[str] = Query(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Oturum anahtarı bulunamadı.")
+    user = db.get_user_by_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Geçersiz veya süresi dolmuş oturum.")
+    return {"success": True, "user": user}
+
+
+@app.post("/api/auth/update-profile")
+async def api_update_profile(data: UpdateProfileRequest):
+    user = db.get_user_by_token(data.token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Geçersiz oturum.")
+    updated = db.update_profile(user["id"], nickname=data.nickname, avatar_color=data.avatar_color)
+    return {"success": True, "user": updated}
+
+
+@app.post("/api/auth/update-permissions")
+async def api_update_permissions(data: UpdatePermissionsRequest):
+    user = db.get_user_by_token(data.token)
+    if not user or (user["role"] != "admin" and not user.get("can_manage_roles")):
+        raise HTTPException(status_code=403, detail="Bu işlem için yönetici yetkiniz bulunmuyor.")
+    updated = db.update_permissions(
+        target_user_id=data.target_user_id,
+        can_mute=data.can_mute,
+        can_kick=data.can_kick,
+        can_move=data.can_move
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+    return {"success": True, "user": updated}
+
+
+@app.post("/api/auth/logout")
+async def api_logout(data: LogoutRequest):
+    db.logout_token(data.token)
+    return {"success": True}
+
+
 @app.get("/api/room-check/{room_id}")
 async def check_room(room_id: str):
     """Check if room exists and requires password"""
@@ -617,6 +958,7 @@ async def websocket_endpoint(
     websocket: WebSocket,
     room_id: str,
     client_id: str = Query(...),
+    token: Optional[str] = Query(None),
     nickname: str = Query("Misafir"),
     avatar_color: str = Query("#5865F2"),
     voice_channel: str = Query("channel-1"),
@@ -624,6 +966,25 @@ async def websocket_endpoint(
 ):
     await websocket.accept()
     room = manager.get_room(room_id)
+
+    # Oturum tokeni üzerinden kullanıcı yetkilerini ve rolünü çözümle
+    auth_user = db.get_user_by_token(token) if token else None
+    if auth_user:
+        user_id = auth_user["id"]
+        nickname = auth_user["nickname"]
+        avatar_color = auth_user["avatar_color"]
+        role = auth_user["role"]
+        can_mute = bool(auth_user["can_mute"])
+        can_kick = bool(auth_user["can_kick"])
+        can_move = bool(auth_user["can_move"])
+        can_manage_roles = bool(auth_user["can_manage_roles"])
+    else:
+        user_id = None
+        role = "user"
+        can_mute = False
+        can_kick = False
+        can_move = False
+        can_manage_roles = False
 
     # Room password validation
     if room["password"] is not None and len(room["participants"]) > 0:
@@ -656,26 +1017,40 @@ async def websocket_endpoint(
         except Exception:
             pass
 
-    # Add client to room
+    # Add client to room with role & moderation permissions
     room["participants"][client_id] = {
         "websocket": websocket,
+        "user_id": user_id,
         "nickname": nickname,
         "avatar_color": avatar_color,
         "voice_channel": voice_channel,
+        "role": role,
+        "can_mute": can_mute,
+        "can_kick": can_kick,
+        "can_move": can_move,
+        "can_manage_roles": can_manage_roles,
+        "is_server_muted": False,
         "is_muted": False,
         "is_deafened": False,
         "is_speaking": False
     }
 
-    logger.info(f"User joined: {nickname} ({client_id}) -> Room: {room_id} [Channel: {voice_channel}] (Total: {len(room['participants'])})")
+    logger.info(f"User joined: {nickname} ({client_id}, role={role}) -> Room: {room_id} [Channel: {voice_channel}] (Total: {len(room['participants'])})")
 
     # Prepare existing users list to send to newly joined peer
     existing_users = [
         {
             "client_id": cid,
+            "user_id": u.get("user_id"),
             "nickname": u["nickname"],
             "avatar_color": u["avatar_color"],
             "voice_channel": u.get("voice_channel", "channel-1"),
+            "role": u.get("role", "user"),
+            "can_mute": u.get("can_mute", False),
+            "can_kick": u.get("can_kick", False),
+            "can_move": u.get("can_move", False),
+            "can_manage_roles": u.get("can_manage_roles", False),
+            "is_server_muted": u.get("is_server_muted", False),
             "is_muted": u["is_muted"],
             "is_deafened": u["is_deafened"],
             "is_speaking": u["is_speaking"]
@@ -690,6 +1065,14 @@ async def websocket_endpoint(
         "type": "room-welcome",
         "room_id": room_id,
         "your_id": client_id,
+        "your_user_id": user_id,
+        "your_role": role,
+        "your_permissions": {
+            "can_mute": can_mute,
+            "can_kick": can_kick,
+            "can_move": can_move,
+            "can_manage_roles": can_manage_roles
+        },
         "your_voice_channel": voice_channel,
         "users": existing_users,
         "history": history,
@@ -702,9 +1085,16 @@ async def websocket_endpoint(
         {
             "type": "user-joined",
             "client_id": client_id,
+            "user_id": user_id,
             "nickname": nickname,
             "avatar_color": avatar_color,
             "voice_channel": voice_channel,
+            "role": role,
+            "can_mute": can_mute,
+            "can_kick": can_kick,
+            "can_move": can_move,
+            "can_manage_roles": can_manage_roles,
+            "is_server_muted": False,
             "is_muted": False,
             "is_deafened": False,
             "is_speaking": False
@@ -812,12 +1202,16 @@ async def websocket_endpoint(
                 # Audio state changed (muted, deafened, speaking)
                 user_record = room["participants"].get(client_id)
                 if user_record:
-                    if "is_muted" in message:
-                        user_record["is_muted"] = bool(message["is_muted"])
+                    if user_record.get("is_server_muted"):
+                        user_record["is_muted"] = True
+                        user_record["is_speaking"] = False
+                    else:
+                        if "is_muted" in message:
+                            user_record["is_muted"] = bool(message["is_muted"])
+                        if "is_speaking" in message:
+                            user_record["is_speaking"] = bool(message["is_speaking"])
                     if "is_deafened" in message:
                         user_record["is_deafened"] = bool(message["is_deafened"])
-                    if "is_speaking" in message:
-                        user_record["is_speaking"] = bool(message["is_speaking"])
 
                     await manager.broadcast_to_room(
                         room_id,
@@ -826,9 +1220,192 @@ async def websocket_endpoint(
                             "client_id": client_id,
                             "is_muted": user_record["is_muted"],
                             "is_deafened": user_record["is_deafened"],
-                            "is_speaking": user_record["is_speaking"]
+                            "is_speaking": user_record["is_speaking"],
+                            "is_server_muted": user_record.get("is_server_muted", False)
                         },
                         exclude_client_id=client_id
+                    )
+
+            elif msg_type == "admin-mute-user":
+                target_id = message.get("target_id")
+                mute_state = bool(message.get("mute", True))
+                sender_rec = room["participants"].get(client_id)
+                if sender_rec and (sender_rec.get("role") == "admin" or sender_rec.get("can_mute")):
+                    target_rec = room["participants"].get(target_id)
+                    if target_rec:
+                        if target_rec.get("role") == "admin" and sender_rec.get("role") != "admin":
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": "Yönetici susturulamaz!"
+                            }))
+                        else:
+                            target_rec["is_server_muted"] = mute_state
+                            if mute_state:
+                                target_rec["is_muted"] = True
+                                target_rec["is_speaking"] = False
+                            target_name = target_rec["nickname"]
+                            await manager.broadcast_to_room(
+                                room_id,
+                                {
+                                    "type": "user-server-muted",
+                                    "client_id": target_id,
+                                    "target_id": target_id,
+                                    "is_server_muted": mute_state,
+                                    "by_name": nickname,
+                                    "muted_by": nickname
+                                }
+                            )
+                            act = "susturdu" if mute_state else "susturmasını kaldırdı"
+                            await manager.broadcast_to_room(
+                                room_id,
+                                {
+                                    "type": "chat-system",
+                                    "text": f"🔇 {nickname}, {target_name} kullanıcısını sunucuda {act}.",
+                                    "timestamp": time.strftime("%H:%M")
+                                }
+                            )
+
+            elif msg_type == "admin-move-user":
+                target_id = message.get("target_id") or message.get("client_id")
+                new_channel = message.get("new_channel") or message.get("target_channel") or "channel-1"
+                sender_rec = room["participants"].get(client_id)
+                if sender_rec and (sender_rec.get("role") == "admin" or sender_rec.get("can_move")):
+                    target_rec = room["participants"].get(target_id)
+                    if target_rec:
+                        old_channel = target_rec.get("voice_channel", "channel-1")
+                        target_rec["voice_channel"] = new_channel
+                        target_name = target_rec["nickname"]
+
+                        # Hedef kullanıcıya odayı zorla değiştirme emri gönder
+                        await manager.send_to_peer(
+                            room_id,
+                            target_id,
+                            {
+                                "type": "force-channel-switch",
+                                "new_channel": new_channel,
+                                "target_channel": new_channel,
+                                "by_name": nickname,
+                                "moved_by": nickname
+                            }
+                        )
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "channel-switched",
+                                "client_id": target_id,
+                                "nickname": target_name,
+                                "old_channel": old_channel,
+                                "new_channel": new_channel,
+                                "by_name": nickname
+                            }
+                        )
+                        ch_names = {"channel-1": "Ses Odası 1", "channel-2": "Ses Odası 2", "channel-3": "Ses Odası 3", "channel-4": "Ses Odası 4", "channel-5": "Ses Odası 5"}
+                        ch_label = ch_names.get(new_channel, new_channel)
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "chat-system",
+                                "text": f"🔀 {nickname}, {target_name} kullanıcısını {ch_label} odasına taşıdı.",
+                                "timestamp": time.strftime("%H:%M")
+                            }
+                        )
+
+            elif msg_type == "admin-kick-user":
+                target_id = message.get("target_id")
+                reason = message.get("reason", "Yönetici tarafından odadan çıkarıldınız.")
+                sender_rec = room["participants"].get(client_id)
+                if sender_rec and (sender_rec.get("role") == "admin" or sender_rec.get("can_kick")):
+                    target_rec = room["participants"].get(target_id)
+                    if target_rec:
+                        if target_rec.get("role") == "admin" and sender_rec.get("role") != "admin":
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": "Yönetici odadan atılamaz!"
+                            }))
+                        else:
+                            target_name = target_rec["nickname"]
+                            target_ws = target_rec.get("websocket")
+                            if target_ws:
+                                try:
+                                    await target_ws.send_text(json.dumps({
+                                        "type": "kicked",
+                                        "reason": reason,
+                                        "by_name": nickname
+                                    }))
+                                    await target_ws.close(code=1000)
+                                except Exception:
+                                    pass
+                            await manager.broadcast_to_room(
+                                room_id,
+                                {
+                                    "type": "chat-system",
+                                    "text": f"👢 {nickname}, {target_name} kullanıcısını odadan attı.",
+                                    "timestamp": time.strftime("%H:%M")
+                                }
+                            )
+
+            elif msg_type == "admin-set-permissions":
+                target_user_id = message.get("target_user_id")
+                can_mute_val = bool(message.get("can_mute", False))
+                can_kick_val = bool(message.get("can_kick", False))
+                can_move_val = bool(message.get("can_move", False))
+                sender_rec = room["participants"].get(client_id)
+                if sender_rec and (sender_rec.get("role") == "admin" or sender_rec.get("can_manage_roles")):
+                    updated_user = db.update_permissions(target_user_id, can_mute_val, can_kick_val, can_move_val)
+                    if updated_user:
+                        for cid, peer in room["participants"].items():
+                            if peer.get("user_id") == target_user_id:
+                                peer["can_mute"] = can_mute_val
+                                peer["can_kick"] = can_kick_val
+                                peer["can_move"] = can_move_val
+                                peer["role"] = updated_user["role"]
+                                await manager.broadcast_to_room(
+                                    room_id,
+                                    {
+                                        "type": "user-permissions-updated",
+                                        "client_id": cid,
+                                        "user_id": target_user_id,
+                                        "role": updated_user["role"],
+                                        "can_mute": can_mute_val,
+                                        "can_kick": can_kick_val,
+                                        "can_move": can_move_val,
+                                        "by_name": nickname
+                                    }
+                                )
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "chat-system",
+                                "text": f"👑 {nickname}, {updated_user['nickname']} kullanıcısının yetkilerini güncelledi.",
+                                "timestamp": time.strftime("%H:%M")
+                            }
+                        )
+
+            elif msg_type == "user-change-nickname":
+                new_nick = message.get("nickname", "").strip()
+                if new_nick and len(new_nick) <= 25:
+                    old_nick = nickname
+                    nickname = new_nick
+                    user_record = room["participants"].get(client_id)
+                    if user_record:
+                        user_record["nickname"] = new_nick
+                        if user_record.get("user_id"):
+                            db.update_profile(user_record["user_id"], nickname=new_nick)
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "user-nickname-changed",
+                            "client_id": client_id,
+                            "nickname": new_nick
+                        }
+                    )
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "chat-system",
+                            "text": f"✏️ {old_nick} takma adını '{new_nick}' olarak değiştirdi.",
+                            "timestamp": time.strftime("%H:%M")
+                        }
                     )
 
             elif msg_type == "browser-open":
