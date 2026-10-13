@@ -30,9 +30,12 @@ const state = {
     isSpeaking: false,
     lastSpokeTime: 0,
 
-    // Ping / Latency
+    // Ping / Latency & Watchdog
     pingInterval: null,
     lastPingSent: 0,
+    lastPongReceived: Date.now(),
+    reconnectAttempts: 0,
+    reconnectTimeoutId: null,
 
     // Public Internet Tunnel
     tunnelUrl: null,
@@ -624,7 +627,37 @@ function setSpeakingState(speaking) {
 // ============================================================================
 // 4. WEBSOCKET VE SİNYALLEŞME (ODAYA KATILMA)
 // ============================================================================
+function scheduleReconnect() {
+    if (sessionStorage.getItem('agalar_manual_leave')) return;
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
+    if (state.reconnectTimeoutId) return;
+
+    state.reconnectAttempts++;
+    const delay = Math.min(1000 * Math.pow(1.5, state.reconnectAttempts - 1), 6000);
+    console.log(`[Auto-Reconnect] ${Math.round(delay)}ms sonra yeniden bağlanılacak (Deneme #${state.reconnectAttempts})...`);
+
+    if (el.dockStatus) {
+        el.dockStatus.textContent = `Yeniden bağlanılıyor... (#${state.reconnectAttempts})`;
+    }
+
+    state.reconnectTimeoutId = setTimeout(async () => {
+        state.reconnectTimeoutId = null;
+        if (!sessionStorage.getItem('agalar_manual_leave') && (!state.ws || state.ws.readyState !== WebSocket.OPEN)) {
+            try {
+                await joinRoom(true);
+            } catch (err) {
+                console.warn("[Auto-Reconnect] Yeniden bağlanma denemesi başarısız:", err);
+                scheduleReconnect();
+            }
+        }
+    }, delay);
+}
+
 async function joinRoom(isAutoJoin = false) {
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        return;
+    }
+
     const nick = el.nicknameInput.value.trim() || 'Misafir';
     const room = el.roomInput.value.trim() || 'gaming';
     const pass = el.passwordInput.value.trim();
@@ -671,19 +704,34 @@ async function joinRoom(isAutoJoin = false) {
         }
 
         if (state.ws) {
-            try { state.ws.close(); } catch(e) {}
+            try {
+                state.ws.onopen = null;
+                state.ws.onmessage = null;
+                state.ws.onerror = null;
+                state.ws.onclose = null;
+                state.ws.close();
+            } catch(e) {}
+            state.ws = null;
         }
 
-        state.ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(wsUrl);
+        state.ws = ws;
 
-        state.ws.onopen = () => {
+        ws.onopen = () => {
             console.log("WebSocket bağlantısı kuruldu.");
+            state.reconnectAttempts = 0;
+            if (state.reconnectTimeoutId) {
+                clearTimeout(state.reconnectTimeoutId);
+                state.reconnectTimeoutId = null;
+            }
+            state.lastPongReceived = Date.now();
+            if (el.dockStatus) el.dockStatus.textContent = "Bağlandı";
             startPingHeartbeat();
             switchToRoomUI();
-            addSelfUserCard();
+            syncVoiceGrid();
         };
 
-        state.ws.onmessage = async (event) => {
+        ws.onmessage = async (event) => {
             try {
                 const msg = JSON.parse(event.data);
                 handleServerMessage(msg);
@@ -692,14 +740,15 @@ async function joinRoom(isAutoJoin = false) {
             }
         };
 
-        state.ws.onerror = (err) => {
+        ws.onerror = (err) => {
             console.error("WebSocket hatası:", err);
             if (!isAutoJoin) {
                 showError("Sunucuya bağlanırken bir hata oluştu.");
             }
+            scheduleReconnect();
         };
 
-        state.ws.onclose = (event) => {
+        ws.onclose = (event) => {
             console.log("WebSocket kapandı:", event.code, event.reason);
             clearInterval(state.pingInterval);
             if (event.code === 1008) {
@@ -707,29 +756,30 @@ async function joinRoom(isAutoJoin = false) {
                 switchToLobbyUI();
                 showError("Bağlantı reddedildi: Hatalı oda şifresi veya oda dolu!");
             } else if (!sessionStorage.getItem('agalar_manual_leave')) {
-                // Beklenmedik bağlantı kopması durumunda otomatik yeniden bağlan
-                if (el.dockStatus) el.dockStatus.textContent = "Yeniden bağlanılıyor...";
-                setTimeout(() => {
-                    if (!sessionStorage.getItem('agalar_manual_leave') && (!state.ws || state.ws.readyState === WebSocket.CLOSED)) {
-                        console.log("Sunucuya yeniden bağlanılıyor...");
-                        joinRoom(true);
-                    }
-                }, 3500);
+                scheduleReconnect();
             }
         };
 
     } catch (err) {
         console.error("Odaya katılma hatası:", err);
-        showError("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.");
+        if (isAutoJoin) {
+            scheduleReconnect();
+        } else {
+            showError("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.");
+        }
     }
 }
 
 function handleServerMessage(msg) {
     switch (msg.type) {
         case 'room-welcome':
-            // Odaya ilk giriş - mevcut kullanıcıları al ve WebRTC bağlantısı başlat
+            // Odaya ilk giriş veya yeniden bağlanma - mevcut kullanıcıları al ve WebRTC bağlantısı başlat
             console.log("Odaya hoş geldin. Mevcut üyeler:", msg.users);
             state.voiceChannel = msg.your_voice_channel || state.voiceChannel || 'channel-1';
+
+            // Temiz bir başlangıç için eski/kopmuş tüm WebRTC bağlantılarını sıfırla
+            Object.keys(state.peers).forEach(pId => removePeer(pId, false));
+            state.peers = {};
 
             // Sunucudaki tüm kullanıcıları hafızaya al
             state.allUsers = {};
@@ -741,11 +791,11 @@ function handleServerMessage(msg) {
 
             updateOnlineCount(Object.keys(state.allUsers).length + 1);
             renderVoiceChannelsUI();
+            syncVoiceGrid();
 
             // Yalnızca bizimle aynı ses kanalında olan kullanıcılara WebRTC teklifi (Offer) gönder
             msg.users.forEach(user => {
-                if (user.voice_channel === state.voiceChannel) {
-                    addUserCard(user.client_id, user.nickname, user.avatar_color, user.is_muted, user.is_deafened);
+                if (user.voice_channel === state.voiceChannel && user.client_id !== state.myId) {
                     createPeerConnection(user.client_id, true);
                 }
             });
@@ -779,8 +829,8 @@ function handleServerMessage(msg) {
             break;
 
         case 'user-joined':
-            // Yeni biri odaya katıldı
-            console.log("Yeni kullanıcı katıldı:", msg);
+            // Yeni biri odaya katıldı veya yeniden bağlandı
+            console.log("Yeni kullanıcı katıldı / bağlandı:", msg);
             state.allUsers[msg.client_id] = {
                 client_id: msg.client_id,
                 nickname: msg.nickname,
@@ -792,6 +842,7 @@ function handleServerMessage(msg) {
             };
             updateOnlineCount(Object.keys(state.allUsers).length + 1);
             renderVoiceChannelsUI();
+            syncVoiceGrid();
 
             if (state.dmTabs[msg.client_id]) {
                 state.dmTabs[msg.client_id].nickname = msg.nickname;
@@ -800,9 +851,12 @@ function handleServerMessage(msg) {
             }
 
             // Eğer yeni gelen kişi bizim ses kanalımızdaysa ses bağlantısı kur
-            if (msg.voice_channel === state.voiceChannel) {
+            if (msg.voice_channel === state.voiceChannel && msg.client_id !== state.myId) {
                 SoundEffects.userJoin();
-                addUserCard(msg.client_id, msg.nickname, msg.avatar_color, msg.is_muted, msg.is_deafened);
+                // Eski bayat peer bağlantısı varsa kapat ve temizle
+                if (state.peers[msg.client_id]) {
+                    removePeer(msg.client_id, false);
+                }
                 createPeerConnection(msg.client_id, false);
             }
             break;
@@ -818,16 +872,18 @@ function handleServerMessage(msg) {
             if (msg.client_id !== state.myId) {
                 // Bizim kanalımızdan ayrıldıysa ses bağlantısını kapat
                 if (msg.old_channel === state.voiceChannel) {
-                    removePeer(msg.client_id);
+                    removePeer(msg.client_id, true);
                 }
-                // Bizim kanalımıza katıldıysa kartını ekle ve ses bağlantısı kur
+                // Bizim kanalımıza katıldıysa ses bağlantısı kur
                 else if (msg.new_channel === state.voiceChannel) {
                     SoundEffects.userJoin();
-                    const u = state.allUsers[msg.client_id] || msg;
-                    addUserCard(msg.client_id, u.nickname, u.avatar_color, u.is_muted, u.is_deafened);
+                    if (state.peers[msg.client_id]) {
+                        removePeer(msg.client_id, false);
+                    }
                     createPeerConnection(msg.client_id, false);
                 }
             }
+            syncVoiceGrid();
             break;
 
         case 'signal':
@@ -853,9 +909,10 @@ function handleServerMessage(msg) {
                 SoundEffects.userLeave();
             }
             delete state.allUsers[msg.client_id];
-            removePeer(msg.client_id);
+            removePeer(msg.client_id, true);
             updateOnlineCount(Object.keys(state.allUsers).length + 1);
             renderVoiceChannelsUI();
+            syncVoiceGrid();
             break;
 
         case 'chat':
@@ -933,7 +990,8 @@ function handleServerMessage(msg) {
             break;
 
         case 'pong':
-            // Gecikme ölçümü
+            // Gecikme ölçümü ve Watchdog
+            state.lastPongReceived = Date.now();
             const latency = Date.now() - msg.t;
             el.pingText.textContent = `${latency} ms`;
             break;
@@ -949,7 +1007,11 @@ function handleServerMessage(msg) {
 // ============================================================================
 function createPeerConnection(peerId, isInitiator) {
     if (state.peers[peerId]) {
-        return state.peers[peerId].pc;
+        const existing = state.peers[peerId];
+        if (existing.pc && existing.pc.connectionState !== 'closed' && existing.pc.connectionState !== 'failed') {
+            return existing.pc;
+        }
+        removePeer(peerId, false);
     }
 
     const pc = new RTCPeerConnection(rtcConfig);
@@ -1067,8 +1129,20 @@ function createPeerConnection(peerId, isInitiator) {
 
     pc.onconnectionstatechange = () => {
         console.log(`[WebRTC] ${peerId} bağlantı durumu: ${pc.connectionState}`);
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-            removePeer(peerId);
+        if (pc.connectionState === 'failed') {
+            console.warn(`[WebRTC] ${peerId} bağlantısı koptu (failed). Otomatik onarım deneniyor...`);
+            removePeer(peerId, false);
+            // Eğer kullanıcı hala bizim kanalımızdaysa teklif göndererek onarmayı dene
+            if (state.allUsers[peerId]?.voice_channel === state.voiceChannel) {
+                setTimeout(() => {
+                    if (state.allUsers[peerId]?.voice_channel === state.voiceChannel && !state.peers[peerId]) {
+                        console.log(`[WebRTC] ${peerId} için onarım bağlantısı başlatılıyor.`);
+                        createPeerConnection(peerId, true);
+                    }
+                }, 1200);
+            }
+        } else if (pc.connectionState === 'closed') {
+            removePeer(peerId, false);
         }
     };
 
@@ -1155,7 +1229,15 @@ async function handleSignalMessage(senderId, data) {
                 }
             }
 
-            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            } catch (sdpErr) {
+                console.warn(`[WebRTC] setRemoteDescription hatası (${senderId}), peer sıfırlanıp yeniden deneniyor:`, sdpErr);
+                removePeer(senderId, false);
+                createPeerConnection(senderId, false);
+                peer = state.peers[senderId];
+                await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            }
 
             // Bekleyen ICE adaylarını boşalt
             while (peer.pendingCandidates.length > 0) {
@@ -1205,10 +1287,15 @@ async function handleSignalMessage(senderId, data) {
     }
 }
 
-function removePeer(peerId) {
+function removePeer(peerId, shouldRemoveCard = true) {
     if (state.peers[peerId]) {
         try {
+            state.peers[peerId].pc.onconnectionstatechange = null;
+            state.peers[peerId].pc.onicecandidate = null;
+            state.peers[peerId].pc.ontrack = null;
             state.peers[peerId].pc.close();
+        } catch (e) {}
+        try {
             if (state.peers[peerId].audioEl) {
                 state.peers[peerId].audioEl.pause();
                 state.peers[peerId].audioEl.srcObject = null;
@@ -1217,7 +1304,9 @@ function removePeer(peerId) {
         } catch (e) {}
         delete state.peers[peerId];
     }
-    removeUserCard(peerId);
+    if (shouldRemoveCard) {
+        removeUserCard(peerId);
+    }
 }
 
 function showAutoplayPrompt() {
@@ -1235,6 +1324,48 @@ function hideAutoplayPrompt() {
 // ============================================================================
 // 6. KULLANICI KARTLARI VE SESLİ GRID YÖNETİMİ
 // ============================================================================
+function syncVoiceGrid() {
+    if (!el.voiceGrid) return;
+
+    // 1. Kendi kartımızın varlığını ve güncelliğini garanti et
+    let selfCard = document.getElementById(`card-${state.myId}`);
+    if (!selfCard) {
+        selfCard = createUserCardElement(state.myId, state.nickname, state.avatarColor, true, state.isMuted, state.isDeafened);
+        el.voiceGrid.prepend(selfCard);
+    } else {
+        updateUserCardState(state.myId, state.isMuted, state.isDeafened, state.isSpeaking);
+    }
+
+    // 2. Geçerli kullanıcı ID'leri kümesi
+    const validUserIds = new Set();
+    validUserIds.add(state.myId);
+
+    // 3. Bizim kanalımızdaki kullanıcıları ekle veya güncelle
+    Object.values(state.allUsers).forEach(u => {
+        if (u.voice_channel === state.voiceChannel && u.client_id !== state.myId) {
+            validUserIds.add(u.client_id);
+            let card = document.getElementById(`card-${u.client_id}`);
+            if (!card) {
+                card = createUserCardElement(u.client_id, u.nickname, u.avatar_color, false, u.is_muted, u.is_deafened);
+                el.voiceGrid.appendChild(card);
+            } else {
+                updateUserCardState(u.client_id, u.is_muted, u.is_deafened, u.is_speaking);
+            }
+        }
+    });
+
+    // 4. Kanalımızda bulunmayan fazla/eski kartları temizle
+    const cards = Array.from(el.voiceGrid.children);
+    cards.forEach(card => {
+        const id = card.id ? card.id.replace('card-', '') : null;
+        if (id && !validUserIds.has(id)) {
+            card.remove();
+        }
+    });
+
+    updateGridItemCount();
+}
+
 function addSelfUserCard() {
     removeUserCard(state.myId);
     const card = createUserCardElement(state.myId, state.nickname, state.avatarColor, true, state.isMuted, state.isDeafened);
@@ -1992,16 +2123,16 @@ async function switchVoiceChannel(newChannelId) {
 
     // Eski odadaki tüm eş ses bağlantılarını temizle
     Object.keys(state.peers).forEach(peerId => {
-        removePeer(peerId);
+        removePeer(peerId, true);
     });
+    state.peers = {};
 
-    // Kendi kartımızı ekle
-    addSelfUserCard();
+    // Grid'i yeni oda üyelerine göre senkronize et
+    syncVoiceGrid();
 
     // Yeni odada bulunan kullanıcılara WebRTC teklifi (Offer) gönder
     Object.values(state.allUsers).forEach(user => {
         if (user.voice_channel === newChannelId && user.client_id !== state.myId) {
-            addUserCard(user.client_id, user.nickname, user.avatar_color, user.is_muted, user.is_deafened);
             createPeerConnection(user.client_id, true);
         }
     });
@@ -2014,6 +2145,7 @@ async function switchVoiceChannel(newChannelId) {
         el.dtChannelIndicator.textContent = `${state.channelNames[state.voiceChannel] || state.voiceChannel} (${state.roomId})`;
     }
     renderVoiceChannelsUI();
+    syncVoiceGrid();
 }
 
 function renderVoiceChannelsUI() {
@@ -2089,19 +2221,32 @@ function switchToLobbyUI() {
     el.roomScreen.classList.add('hidden');
     el.lobbyScreen.classList.remove('hidden');
 
+    if (state.reconnectTimeoutId) {
+        clearTimeout(state.reconnectTimeoutId);
+        state.reconnectTimeoutId = null;
+    }
+    state.reconnectAttempts = 0;
+
     // Lobi mikrofon önizlemesini ve test çubuğunu yeniden başlat
     initLobbyMicrophonePreview();
 
     // Temizlik
     if (state.ws) {
-        state.ws.close();
+        try {
+            state.ws.onopen = null;
+            state.ws.onmessage = null;
+            state.ws.onerror = null;
+            state.ws.onclose = null;
+            state.ws.close();
+        } catch(e) {}
         state.ws = null;
     }
     if (state.localStream) {
         state.localStream.getTracks().forEach(t => t.stop());
         state.localStream = null;
     }
-    Object.keys(state.peers).forEach(id => removePeer(id));
+    Object.keys(state.peers).forEach(id => removePeer(id, true));
+    state.peers = {};
     el.voiceGrid.innerHTML = '';
 
     // Ses odaları ve sunucu kullanıcıları temizliği
@@ -2120,15 +2265,22 @@ function switchToLobbyUI() {
 
 function startPingHeartbeat() {
     clearInterval(state.pingInterval);
+    state.lastPongReceived = Date.now();
     state.pingInterval = setInterval(() => {
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            // 15 saniyedir Pong cevabı gelmemişse ölü bağlantıyı sonlandır
+            if (state.lastPongReceived && (Date.now() - state.lastPongReceived > 15000)) {
+                console.warn("[Watchdog] 15 saniyedir Pong cevabı alınamadı. WebSocket sıfırlanıyor...");
+                try { state.ws.close(); } catch(e) {}
+                return;
+            }
             state.lastPingSent = Date.now();
             state.ws.send(JSON.stringify({
                 type: 'ping',
                 t: state.lastPingSent
             }));
         }
-    }, 4000);
+    }, 3500);
 }
 
 // ============================================================================
@@ -3269,3 +3421,54 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// ============================================================================
+// UYKU / AFK / AĞ VE SES UYANDIRMA DİNLEYİCİLERİ
+// ============================================================================
+window.addEventListener('online', () => {
+    console.log("[Network] İnternet bağlantısı yeniden kuruldu (online).");
+    if (!sessionStorage.getItem('agalar_manual_leave') && (!state.ws || state.ws.readyState !== WebSocket.OPEN)) {
+        state.reconnectAttempts = 0;
+        if (state.reconnectTimeoutId) {
+            clearTimeout(state.reconnectTimeoutId);
+            state.reconnectTimeoutId = null;
+        }
+        joinRoom(true);
+    }
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        console.log("[Visibility] Sayfa tekrar ön plana geçti.");
+        if (state.audioCtx && state.audioCtx.state === 'suspended') {
+            state.audioCtx.resume().catch(() => {});
+        }
+        if (!sessionStorage.getItem('agalar_manual_leave')) {
+            if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+                console.log("[Visibility] WebSocket kapalı, anında yeniden bağlanılıyor...");
+                state.reconnectAttempts = 0;
+                if (state.reconnectTimeoutId) {
+                    clearTimeout(state.reconnectTimeoutId);
+                    state.reconnectTimeoutId = null;
+                }
+                joinRoom(true);
+            } else if (state.lastPongReceived && (Date.now() - state.lastPongReceived > 12000)) {
+                console.warn("[Visibility] Arka planda kalınmış ve Pong süresi aşılmış. Bağlantı tazeleniyor...");
+                try { state.ws.close(); } catch(e) {}
+            }
+        }
+    }
+});
+
+// Kullanıcı sayfaya tıkladığında askıdaki Web Audio ve durdurulmuş ses elementlerini uyandır
+document.addEventListener('click', () => {
+    if (state.audioCtx && state.audioCtx.state === 'suspended') {
+        state.audioCtx.resume().catch(() => {});
+    }
+    Object.values(state.peers).forEach(peer => {
+        if (peer.audioEl && peer.audioEl.paused) {
+            peer.audioEl.play().catch(() => {});
+        }
+    });
+}, { passive: true });
+
