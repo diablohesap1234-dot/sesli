@@ -969,24 +969,22 @@ async def websocket_endpoint(
 
     # Oturum tokeni üzerinden kullanıcı yetkilerini ve rolünü çözümle
     auth_user = db.get_user_by_token(token) if token else None
-    if auth_user:
-        user_id = auth_user["id"]
-        nickname = auth_user["nickname"]
-        avatar_color = auth_user["avatar_color"]
-        role = auth_user["role"]
-        can_mute = bool(auth_user["can_mute"])
-        can_kick = bool(auth_user["can_kick"])
-        can_move = bool(auth_user["can_move"])
-        can_manage_roles = bool(auth_user["can_manage_roles"])
-    else:
-        user_id = None
-        # Odaya ilk giren kişi (oda kurucusu) ise oda içi tam moderatör yetkisi ver
-        is_first_in_room = (len(room["participants"]) == 0)
-        role = "admin" if is_first_in_room else "user"
-        can_mute = is_first_in_room
-        can_kick = is_first_in_room
-        can_move = is_first_in_room
-        can_manage_roles = is_first_in_room
+    if not auth_user:
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "Sesli sohbet odalarına katılabilmek için lütfen giriş yapın veya kayıt olun."
+        }))
+        await websocket.close(code=4001)
+        return
+
+    user_id = auth_user["id"]
+    nickname = auth_user["nickname"]
+    avatar_color = auth_user["avatar_color"]
+    role = auth_user["role"]
+    can_mute = bool(auth_user["can_mute"])
+    can_kick = bool(auth_user["can_kick"])
+    can_move = bool(auth_user["can_move"])
+    can_manage_roles = bool(auth_user["can_manage_roles"])
 
     # Room password validation
     if room["password"] is not None and len(room["participants"]) > 0:
