@@ -1318,6 +1318,109 @@ input[type="password"]:focus,
     gap: 6px;
 }
 
+.setting-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.setting-count-badge {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+}
+
+.input-with-action {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.input-with-action .form-select {
+    flex: 1;
+}
+
+.btn-test-speaker {
+    white-space: nowrap;
+    padding: 9px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    background: rgba(88, 101, 242, 0.18);
+    border: 1px solid rgba(88, 101, 242, 0.4);
+    color: #ffffff;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-test-speaker:hover {
+    background: var(--primary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(88, 101, 242, 0.4);
+}
+
+.btn-test-speaker:active {
+    transform: scale(0.97);
+}
+
+.btn-test-speaker.playing {
+    background: rgba(35, 165, 90, 0.25);
+    border-color: var(--success);
+    color: #3dd67d;
+}
+
+.setting-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-top: 2px;
+}
+
+.settings-mic-test-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+    background: rgba(0, 0, 0, 0.28);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+}
+
+.settings-mic-meter-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-input);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    position: relative;
+}
+
+.settings-mic-meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+    border-radius: var(--radius-full);
+    transition: width 0.05s ease-out;
+}
+
+.settings-mic-test-val {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    min-width: 44px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 .checkbox-label {
     display: flex;
     align-items: center;

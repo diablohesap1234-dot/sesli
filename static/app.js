@@ -29,6 +29,9 @@ const state = {
     vadThreshold: 20, // 0 - 100
     isSpeaking: false,
     lastSpokeTime: 0,
+    selectedAudioInput: localStorage.getItem('agalar_selected_mic') || '',
+    selectedAudioOutput: localStorage.getItem('agalar_selected_speaker') || '',
+    settingsMicAnimationId: null,
 
     // Ping / Latency & Watchdog
     pingInterval: null,
@@ -192,6 +195,14 @@ const el = {
     settingsModal: document.getElementById('settings-modal'),
     btnCloseSettings: document.getElementById('btn-close-settings'),
     selectMicDevice: document.getElementById('select-mic-device'),
+    selectSpeakerDevice: document.getElementById('select-speaker-device'),
+    btnTestSpeaker: document.getElementById('btn-test-speaker'),
+    micDeviceCount: document.getElementById('mic-device-count'),
+    speakerDeviceCount: document.getElementById('speaker-device-count'),
+    speakerSupportHint: document.getElementById('speaker-support-hint'),
+    settingsMicMeterFill: document.getElementById('settings-mic-meter-fill'),
+    settingsMicTestVal: document.getElementById('settings-mic-test-val'),
+    btnDockSettings: document.getElementById('btn-dock-settings'),
     selectInputMode: document.getElementById('select-input-mode'),
     sliderMicThreshold: document.getElementById('slider-mic-threshold'),
     thresholdVal: document.getElementById('threshold-val'),
@@ -544,19 +555,255 @@ async function initLobbyMicrophonePreview() {
 }
 
 async function loadAudioDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        console.warn("navigator.mediaDevices.enumerateDevices desteklenmiyor.");
+        return;
+    }
+
     try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        el.selectMicDevice.innerHTML = '<option value="">Varsayılan Mikrofon</option>';
-        devices.forEach(device => {
-            if (device.kind === 'audioinput') {
+        let devices = await navigator.mediaDevices.enumerateDevices();
+
+        // Eğer cihaz isimleri (label) boşsa, tarayıcı henüz izin verilmediği için gizliyor olabilir
+        const hasLabels = devices.some(d => d.label && d.label.trim().length > 0);
+        if (!hasLabels && !state.localStream) {
+            try {
+                // Etiketleri açığa çıkarmak için kısa izin denemesi
+                const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                devices = await navigator.mediaDevices.enumerateDevices();
+                tempStream.getTracks().forEach(t => t.stop());
+            } catch (permErr) {
+                console.warn("Mikrofon izni olmadan aygıt isimleri alınamadı:", permErr);
+            }
+        }
+
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+
+        // 1. MİKROFONLARI (Giriş Aygıtları) Doldur
+        if (el.selectMicDevice) {
+            const currentSelected = state.selectedAudioInput || el.selectMicDevice.value;
+            el.selectMicDevice.innerHTML = '<option value="">Varsayılan Mikrofon</option>';
+            audioInputs.forEach((device, index) => {
                 const opt = document.createElement('option');
                 opt.value = device.deviceId;
-                opt.textContent = device.label || `Mikrofon (${device.deviceId.substring(0, 5)})`;
+                opt.textContent = device.label || `Mikrofon ${index + 1} (${device.deviceId.substring(0, 5)})`;
+                if (currentSelected && device.deviceId === currentSelected) {
+                    opt.selected = true;
+                }
                 el.selectMicDevice.appendChild(opt);
+            });
+            if (el.micDeviceCount) {
+                el.micDeviceCount.textContent = `${audioInputs.length} Aygıt`;
             }
-        });
+        }
+
+        // 2. HOPARLÖR / KULAKLIKLARI (Çıkış Aygıtları) Doldur
+        if (el.selectSpeakerDevice) {
+            const currentSelected = state.selectedAudioOutput || el.selectSpeakerDevice.value;
+            el.selectSpeakerDevice.innerHTML = '<option value="">Varsayılan Hoparlör / Kulaklık</option>';
+            audioOutputs.forEach((device, index) => {
+                const opt = document.createElement('option');
+                opt.value = device.deviceId;
+                opt.textContent = device.label || `Hoparlör ${index + 1} (${device.deviceId.substring(0, 5)})`;
+                if (currentSelected && device.deviceId === currentSelected) {
+                    opt.selected = true;
+                }
+                el.selectSpeakerDevice.appendChild(opt);
+            });
+            if (el.speakerDeviceCount) {
+                el.speakerDeviceCount.textContent = `${audioOutputs.length} Aygıt`;
+            }
+
+            // setSinkId desteği kontrolü (Chrome, Edge, Opera vs. destekler)
+            const isSinkIdSupported = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+            if (el.speakerSupportHint) {
+                if (!isSinkIdSupported) {
+                    el.speakerSupportHint.textContent = "⚠️ Tarayıcınız hoparlör ayrıştırmayı desteklemiyor. Ses işletim sistemi varsayılanından çıkacaktır.";
+                    el.speakerSupportHint.style.color = "var(--warning)";
+                } else {
+                    el.speakerSupportHint.textContent = "Arkadaşlarınızın sesleri ve video sesleri bu aygıttan çalınır.";
+                    el.speakerSupportHint.style.color = "";
+                }
+            }
+        }
     } catch (e) {
-        console.warn("Cihazlar listelenemedi:", e);
+        console.warn("Ses cihazları yüklenirken hata:", e);
+    }
+}
+
+async function applyAudioOutputDevice(sinkId) {
+    state.selectedAudioOutput = sinkId || '';
+    try {
+        localStorage.setItem('agalar_selected_speaker', state.selectedAudioOutput);
+    } catch(e) {}
+
+    const promises = [];
+    // 1. Tüm arkadaşların ses elementlerine uygula
+    Object.values(state.peers).forEach(peer => {
+        if (peer.audioEl && typeof peer.audioEl.setSinkId === 'function') {
+            promises.push(
+                peer.audioEl.setSinkId(state.selectedAudioOutput).catch(err => {
+                    console.warn(`[AudioOutput] peer audioEl setSinkId hatası:`, err);
+                })
+            );
+        }
+    });
+
+    // 2. Canlı video/ekran yayını sesine uygula
+    if (el.stageStreamVideo && typeof el.stageStreamVideo.setSinkId === 'function') {
+        promises.push(
+            el.stageStreamVideo.setSinkId(state.selectedAudioOutput).catch(err => {
+                console.warn(`[AudioOutput] stageStreamVideo setSinkId hatası:`, err);
+            })
+        );
+    }
+
+    // 3. Web AudioContext varsa uygula (Chrome/Edge 110+)
+    if (state.audioCtx && typeof state.audioCtx.setSinkId === 'function') {
+        promises.push(
+            state.audioCtx.setSinkId(state.selectedAudioOutput).catch(() => {})
+        );
+    }
+
+    await Promise.allSettled(promises);
+    console.log(`[AudioOutput] Çıkış hoparlörü güncellendi: ${state.selectedAudioOutput || 'Varsayılan'}`);
+}
+
+async function testSpeakerOutput() {
+    if (el.btnTestSpeaker) {
+        el.btnTestSpeaker.disabled = true;
+        el.btnTestSpeaker.classList.add('playing');
+        el.btnTestSpeaker.innerHTML = '<span>🔊 Çalıyor...</span>';
+    }
+
+    try {
+        SoundEffects.init();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+        }
+
+        const dest = audioCtx.createMediaStreamDestination();
+        const testAudio = document.createElement('audio');
+        testAudio.autoplay = true;
+        testAudio.playsInline = true;
+        testAudio.srcObject = dest.stream;
+
+        // Seçili hoparlörü ayarla
+        if (state.selectedAudioOutput && typeof testAudio.setSinkId === 'function') {
+            await testAudio.setSinkId(state.selectedAudioOutput).catch(e => console.warn("Test audio setSinkId:", e));
+        }
+
+        // Hoş ve melodik 3 ton (Do - Mi - Sol / C5 - E5 - G5)
+        const notes = [523.25, 659.25, 783.99];
+        notes.forEach((freq, idx) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const startTime = audioCtx.currentTime + idx * 0.14;
+            const stopTime = startTime + 0.28;
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, startTime);
+
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(0.25, startTime + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, stopTime);
+
+            osc.connect(gain);
+            gain.connect(dest);
+
+            osc.start(startTime);
+            osc.stop(stopTime);
+        });
+
+        await testAudio.play().catch(() => {});
+
+        setTimeout(() => {
+            try {
+                testAudio.pause();
+                testAudio.srcObject = null;
+                testAudio.remove();
+                audioCtx.close().catch(() => {});
+            } catch(e) {}
+            if (el.btnTestSpeaker) {
+                el.btnTestSpeaker.disabled = false;
+                el.btnTestSpeaker.classList.remove('playing');
+                el.btnTestSpeaker.innerHTML = '<span>🔊 Test Et</span>';
+            }
+        }, 1100);
+    } catch (err) {
+        console.warn("Hoparlör test sesi çalınamadı:", err);
+        if (el.btnTestSpeaker) {
+            el.btnTestSpeaker.disabled = false;
+            el.btnTestSpeaker.classList.remove('playing');
+            el.btnTestSpeaker.innerHTML = '<span>🔊 Test Et</span>';
+        }
+    }
+}
+
+function startSettingsMicPreview() {
+    stopSettingsMicPreview();
+    if (!el.settingsModal || el.settingsModal.classList.contains('hidden')) return;
+
+    // Eğer mikrofon kapalı veya açılmamışsa başlatmayı dene
+    if (!state.localStream && state.ws && state.ws.readyState === WebSocket.OPEN) {
+        setupLocalAudioStream().catch(() => {});
+    }
+
+    const dataArray = new Uint8Array(256);
+    dataArray.fill(128);
+
+    function updatePreview() {
+        if (!el.settingsModal || el.settingsModal.classList.contains('hidden')) {
+            stopSettingsMicPreview();
+            return;
+        }
+
+        if (state.analyser && state.localStream) {
+            dataArray.fill(128);
+            state.analyser.getByteTimeDomainData(dataArray);
+            let maxDelta = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                const delta = Math.abs(dataArray[i] - 128);
+                if (delta > maxDelta) maxDelta = delta;
+            }
+            const percent = Math.min(100, Math.round((maxDelta / 128) * 100 * 3));
+            if (el.settingsMicMeterFill) {
+                el.settingsMicMeterFill.style.width = percent + "%";
+            }
+            if (el.settingsMicTestVal) {
+                if (state.isMuted) {
+                    el.settingsMicTestVal.textContent = "Susturuldu";
+                    el.settingsMicTestVal.style.color = "var(--danger)";
+                } else if (percent > 8) {
+                    el.settingsMicTestVal.textContent = `${percent}%`;
+                    el.settingsMicTestVal.style.color = "var(--success)";
+                } else {
+                    el.settingsMicTestVal.textContent = "Sessiz";
+                    el.settingsMicTestVal.style.color = "var(--text-secondary)";
+                }
+            }
+        } else {
+            if (el.settingsMicMeterFill) el.settingsMicMeterFill.style.width = "0%";
+            if (el.settingsMicTestVal) {
+                el.settingsMicTestVal.textContent = "Mikrofon Kapalı";
+                el.settingsMicTestVal.style.color = "var(--text-muted)";
+            }
+        }
+
+        state.settingsMicAnimationId = requestAnimationFrame(updatePreview);
+    }
+
+    state.settingsMicAnimationId = requestAnimationFrame(updatePreview);
+}
+
+function stopSettingsMicPreview() {
+    if (state.settingsMicAnimationId) {
+        cancelAnimationFrame(state.settingsMicAnimationId);
+        state.settingsMicAnimationId = null;
+    }
+    if (el.settingsMicMeterFill) {
+        el.settingsMicMeterFill.style.width = "0%";
     }
 }
 
@@ -568,16 +815,34 @@ async function setupLocalAudioStream(deviceId = null) {
         state.localStream.getTracks().forEach(t => t.stop());
     }
 
+    const targetDeviceId = deviceId || state.selectedAudioInput || null;
+
     const audioConstraints = {
         echoCancellation: el.chkEcho ? el.chkEcho.checked : true,
         noiseSuppression: el.chkNoise ? el.chkNoise.checked : true,
         autoGainControl: true
     };
-    if (deviceId) {
-        audioConstraints.deviceId = { exact: deviceId };
+    if (targetDeviceId) {
+        audioConstraints.deviceId = { ideal: targetDeviceId };
     }
 
-    state.localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    try {
+        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    } catch (err) {
+        console.warn("Seçili mikrofonla açılamadı, varsayılan deneniyor:", err);
+        delete audioConstraints.deviceId;
+        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    }
+
+    // Aktif cihaz bilgisini state ve localStorage'a kaydet
+    const audioTrack = state.localStream.getAudioTracks()[0];
+    if (audioTrack) {
+        const trackSettings = audioTrack.getSettings ? audioTrack.getSettings() : {};
+        if (trackSettings.deviceId && !targetDeviceId) {
+            state.selectedAudioInput = trackSettings.deviceId;
+            try { localStorage.setItem('agalar_selected_mic', trackSettings.deviceId); } catch(e) {}
+        }
+    }
 
     // Web Audio Analyser
     SoundEffects.init();
@@ -1242,6 +1507,11 @@ function createPeerConnection(peerId, isInitiator) {
         audioEl.setAttribute('playsinline', '');
         const container = document.getElementById('audio-container') || document.body;
         container.appendChild(audioEl);
+    }
+
+    // Seçili hoparlör varsa hemen uygula
+    if (state.selectedAudioOutput && typeof audioEl.setSinkId === 'function') {
+        audioEl.setSinkId(state.selectedAudioOutput).catch(e => console.warn('Peer setSinkId error:', e));
     }
 
     state.peers[peerId] = {
@@ -4141,20 +4411,30 @@ function initEventListeners() {
         });
     }
 
-    // Ayarlar Modalı
+    // Ayarlar Modalı Aç / Kapat
+    const openSettingsModal = async () => {
+        if (el.settingsModal) el.settingsModal.classList.remove('hidden');
+        await loadAudioDevices();
+        startSettingsMicPreview();
+    };
+
+    const closeSettingsModal = () => {
+        if (el.settingsModal) el.settingsModal.classList.add('hidden');
+        stopSettingsMicPreview();
+    };
+
     if (el.btnSettingsToggle) {
-        el.btnSettingsToggle.addEventListener('click', () => {
-            if (el.settingsModal) el.settingsModal.classList.remove('hidden');
-        });
+        el.btnSettingsToggle.addEventListener('click', openSettingsModal);
+    }
+    if (el.btnDockSettings) {
+        el.btnDockSettings.addEventListener('click', openSettingsModal);
     }
     if (el.btnCloseSettings) {
-        el.btnCloseSettings.addEventListener('click', () => {
-            if (el.settingsModal) el.settingsModal.classList.add('hidden');
-        });
+        el.btnCloseSettings.addEventListener('click', closeSettingsModal);
     }
     if (el.settingsModal) {
         el.settingsModal.addEventListener('click', (e) => {
-            if (e.target === el.settingsModal) el.settingsModal.classList.add('hidden');
+            if (e.target === el.settingsModal) closeSettingsModal();
         });
     }
 
@@ -4172,10 +4452,37 @@ function initEventListeners() {
         });
     }
 
+    // Mikrofon Giriş Aygıtı Seçimi
     if (el.selectMicDevice) {
-        el.selectMicDevice.addEventListener('change', (e) => {
-            setupLocalAudioStream(e.target.value);
+        el.selectMicDevice.addEventListener('change', async (e) => {
+            state.selectedAudioInput = e.target.value;
+            try {
+                localStorage.setItem('agalar_selected_mic', e.target.value);
+            } catch(err) {}
+            console.log("[AudioInput] Yeni mikrofon seçildi:", state.selectedAudioInput || 'Varsayılan');
+            await setupLocalAudioStream(state.selectedAudioInput);
         });
+    }
+
+    // Hoparlör / Kulaklık Çıkış Aygıtı Seçimi
+    if (el.selectSpeakerDevice) {
+        el.selectSpeakerDevice.addEventListener('change', async (e) => {
+            state.selectedAudioOutput = e.target.value;
+            await applyAudioOutputDevice(state.selectedAudioOutput);
+        });
+    }
+
+    // Hoparlör Test Etme Butonu
+    if (el.btnTestSpeaker) {
+        el.btnTestSpeaker.addEventListener('click', testSpeakerOutput);
+    }
+
+    // Harici Aygıt Takıldığında / Çıkarıldığında (Kulaklık/Mikrofon) Listeyi Güncelle
+    if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
+        navigator.mediaDevices.ondevicechange = () => {
+            console.log("[AudioDevices] Donanım değişikliği algılandı, aygıtlar güncelleniyor...");
+            loadAudioDevices();
+        };
     }
 
     if (el.chkEcho) el.chkEcho.addEventListener('change', () => setupLocalAudioStream());
@@ -4222,7 +4529,7 @@ function initEventListeners() {
         // Kısayollar
         if (e.key === 'Escape') {
             closeLightbox();
-            if (el.settingsModal) el.settingsModal.classList.add('hidden');
+            closeSettingsModal();
             if (el.inviteModal) el.inviteModal.classList.add('hidden');
             if (el.desktopInfoModal) el.desktopInfoModal.classList.add('hidden');
         } else if (e.code === 'KeyM' && !e.repeat) {
@@ -4529,6 +4836,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     initEventListeners();
     checkTunnelStatus();
     initDesktopExperience();
+
+    // Ses aygıtlarını başlangıçta tara ve kayıtlı hoparlör/kulaklığı hazırla
+    loadAudioDevices().then(() => {
+        if (state.selectedAudioOutput) {
+            applyAudioOutputDevice(state.selectedAudioOutput).catch(() => {});
+        }
+    }).catch(() => {});
 
     // Otomatik Giriş engellendi: Kullanıcı mutlaka lobide başlangıç ses odasını seçip "Odaya Katıl" butonuna basmalıdır.
     // Oturum açıksa kullanıcı profilini ve oda seçim formunu göster; açık değilse sadece Giriş/Kayıt ekranını göster.
