@@ -627,6 +627,9 @@
                         <span class="dock-icon">💬</span>
                         <span id="dock-chat-unread-dot" class="chat-unread-dot hidden"></span>
                     </button>
+                    <button type="button" id="btn-dock-settings" class="dock-btn-icon-only" title="Ses ve Cihaz Ayarları">
+                        <span class="dock-icon">⚙️</span>
+                    </button>
                 </div>
             </footer>
         </div>
@@ -640,10 +643,35 @@
                 </div>
                 <div class="modal-body">
                     <div class="setting-item">
-                        <label for="select-mic-device">Mikrofon Giriş Aygıtı</label>
+                        <div class="setting-label-row">
+                            <label for="select-mic-device">🎙️ Mikrofon (Giriş Aygıtı)</label>
+                            <span id="mic-device-count" class="setting-count-badge">0 Aygıt</span>
+                        </div>
                         <select id="select-mic-device" class="form-select">
                             <option value="">Varsayılan Mikrofon</option>
                         </select>
+                        <div class="settings-mic-test-wrap" title="Mikrofon Ses Seviyesi">
+                            <div class="settings-mic-meter-bar">
+                                <div id="settings-mic-meter-fill" class="settings-mic-meter-fill"></div>
+                            </div>
+                            <span id="settings-mic-test-val" class="settings-mic-test-val">Sessiz</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label-row">
+                            <label for="select-speaker-device">🔊 Hoparlör / Kulaklık (Çıkış Aygıtı)</label>
+                            <span id="speaker-device-count" class="setting-count-badge">0 Aygıt</span>
+                        </div>
+                        <div class="input-with-action">
+                            <select id="select-speaker-device" class="form-select flex-1">
+                                <option value="">Varsayılan Hoparlör / Kulaklık</option>
+                            </select>
+                            <button type="button" id="btn-test-speaker" class="btn-secondary btn-test-speaker" title="Hoparlörü Test Et">
+                                <span>🔊 Test Et</span>
+                            </button>
+                        </div>
+                        <p id="speaker-support-hint" class="setting-hint">Arkadaşlarınızın sesleri ve video sesleri bu aygıttan çalınır.</p>
                     </div>
 
                     <div class="setting-item">
