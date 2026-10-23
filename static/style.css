@@ -4813,5 +4813,26 @@ body.desktop-mode.compact-mode .user-avatar {
     color: var(--text-primary);
 }
 
+/* Lobi Ses Aygıtı Seçim Alanı */
+.lobby-device-selectors {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 10px 0 12px 0;
+}
+
+.lobby-device-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.lobby-device-field label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+
 
 

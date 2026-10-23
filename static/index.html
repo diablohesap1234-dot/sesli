@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Agalar">
     <link rel="apple-touch-icon" href="/icon-192.png">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=20261023_5">
 </head>
 <body>
     <!-- MASAÜSTÜ SİNEMATİK AÇILIŞ ANİMASYONU (SPLASH SCREEN) -->
@@ -91,7 +91,7 @@
                     </div>
 
                     <!-- GİRİŞ FORMU -->
-                    <form id="auth-login-form" class="auth-form-card">
+                    <form id="auth-login-form" class="auth-form-card" action="javascript:void(0);">
                         <div class="form-group">
                             <label for="auth-login-email">E-posta Adresi</label>
                             <input type="email" id="auth-login-email" placeholder="ornek@agalar.com" required autocomplete="email">
@@ -106,7 +106,7 @@
                     </form>
 
                     <!-- KAYIT FORMU -->
-                    <form id="auth-register-form" class="auth-form-card hidden">
+                    <form id="auth-register-form" class="auth-form-card hidden" action="javascript:void(0);">
                         <div class="form-group">
                             <label for="auth-reg-nick">Kullanıcı Adı (Takma Ad)</label>
                             <input type="text" id="auth-reg-nick" placeholder="Örn: KralAga" maxlength="20" required autocomplete="nickname">
@@ -152,12 +152,13 @@
                             </div>
                         </div>
                         <div class="lup-actions">
+                            <button type="button" id="btn-lobby-settings" class="btn-action-sm" title="Ses ve Cihaz Ayarları">⚙️ Ses Ayarları</button>
                             <button type="button" id="btn-lobby-edit-nick" class="btn-action-sm" title="Kullanıcı Adını Değiştir">✏️ İsim Değiştir</button>
                             <button type="button" id="btn-lobby-logout" class="btn-action-sm danger" title="Oturumu Kapat">🚪 Çıkış</button>
                         </div>
                     </div>
 
-                    <form id="join-form" class="lobby-form">
+                    <form id="join-form" class="lobby-form" action="javascript:void(0);">
                         <!-- Gizli veya uyumlu inputlar -->
                         <input type="hidden" id="nickname-input" value="Misafir">
                         <div class="form-row">
@@ -182,16 +183,37 @@
                             <input type="password" id="password-input" placeholder="Gizli oda için şifre (opsiyonel)" maxlength="20" autocomplete="new-password">
                         </div>
 
-                        <!-- Mikrofon Test ve İzin Alanı -->
+                        <!-- Mikrofon & Hoparlör Seçimi ve Test Alanı -->
                         <div class="mic-test-box">
                             <div class="mic-test-header">
-                                <span>🎤 Mikrofon Önizleme:</span>
+                                <span>🎧 Ses Giriş & Çıkış Aygıtları:</span>
                                 <span id="mic-status-badge" class="badge">Bekleniyor</span>
                             </div>
+
+                            <div class="lobby-device-selectors">
+                                <div class="lobby-device-field">
+                                    <label for="lobby-select-mic">🎙️ Mikrofon (Giriş Aygıtı)</label>
+                                    <select id="lobby-select-mic" class="form-select">
+                                        <option value="">Varsayılan Mikrofon</option>
+                                    </select>
+                                </div>
+                                <div class="lobby-device-field">
+                                    <label for="lobby-select-speaker">🔊 Hoparlör / Kulaklık (Çıkış Aygıtı)</label>
+                                    <div class="input-with-action">
+                                        <select id="lobby-select-speaker" class="form-select flex-1">
+                                            <option value="">Varsayılan Hoparlör / Kulaklık</option>
+                                        </select>
+                                        <button type="button" id="btn-lobby-test-speaker" class="btn-secondary btn-test-speaker" title="Hoparlörü Test Et">
+                                            <span>🔊 Test</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="mic-meter-bar">
                                 <div id="mic-meter-fill" class="mic-meter-fill"></div>
                             </div>
-                            <p class="mic-tip">Odaya girmeden önce mikrofonuna konuşarak çubuğun hareket ettiğini kontrol edebilirsin.</p>
+                            <p class="mic-tip">Odaya girmeden önce mikrofonunu ve hoparlörünü seçip test edebilirsin.</p>
                         </div>
 
                     <!-- Dış İnternet Tünel Paylaşımı (Bat gerektirmez) -->
@@ -971,6 +993,6 @@
     </div>
 
     <!-- SESLERİ OYNATMAK İÇİN SENTEZLEME YAZILIMI APP.JS İÇİNDE BULUNMAKTADIR -->
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20261023_5"></script>
 </body>
 </html>

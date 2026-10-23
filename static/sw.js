@@ -1,26 +1,25 @@
-const CACHE_NAME = 'sesli-sohbet-v1';
+const CACHE_NAME = 'sesli-sohbet-v5';
 const STATIC_ASSETS = [
     '/',
-    '/style.css',
-    '/app.js',
     '/manifest.json',
     '/icon-192.png',
     '/icon-512.png',
     '/static/icon.svg'
 ];
 
-// Install: Cache critical core assets for fast startup & PWA readiness
+// Install: Activate new service worker immediately
 self.addEventListener('install', (event) => {
+    self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
             return cache.addAll(STATIC_ASSETS).catch((err) => {
                 console.warn('ServiceWorker pre-cache warning:', err);
             });
-        }).then(() => self.skipWaiting())
+        })
     );
 });
 
-// Activate: Clean up old cache versions
+// Activate: Clean up old cache versions immediately
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((keys) => {
@@ -35,11 +34,11 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Fetch: Network-first for dynamic content, stale-while-revalidate for static files
+// Fetch: Always network-first (no-cache) for HTML, JS, CSS so updates apply immediately
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // WebSocket, API and upload requests should not be cached
+    // WebSocket, API and upload requests should never be intercepted
     if (
         event.request.method !== 'GET' ||
         url.pathname.startsWith('/ws') ||
@@ -49,10 +48,16 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    const isCoreCode = (
+        url.pathname === '/' ||
+        url.pathname.endsWith('.html') ||
+        url.pathname.endsWith('.js') ||
+        url.pathname.endsWith('.css')
+    );
+
     event.respondWith(
-        fetch(event.request)
+        fetch(event.request, isCoreCode ? { cache: 'no-cache' } : {})
             .then((networkResponse) => {
-                // If network is available and response is good, update the cache
                 if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
                     const responseToCache = networkResponse.clone();
                     caches.open(CACHE_NAME).then((cache) => {
@@ -62,7 +67,6 @@ self.addEventListener('fetch', (event) => {
                 return networkResponse;
             })
             .catch(() => {
-                // Network failed (offline or slow): serve from cache
                 return caches.match(event.request).then((cachedResponse) => {
                     if (cachedResponse) {
                         return cachedResponse;
