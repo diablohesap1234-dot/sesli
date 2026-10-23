@@ -915,30 +915,109 @@ async def get_icon_512():
 
 @app.get("/api/download-launcher")
 async def download_launcher(url: Optional[str] = None):
-    """Generates and serves a lightweight Windows .bat desktop launcher"""
+    """Generates and serves a Windows .bat desktop & Steam-style In-Game Overlay launcher (Global Hotkeys + Transparency)"""
     target_url = url if url and url.startswith("http") else "https://sesli2.onrender.com/"
     if "mode=desktop" not in target_url:
         sep = "&" if "?" in target_url else "?"
-        target_url = f"{target_url}{sep}mode=desktop"
+        target_url = f"{target_url}{sep}mode=desktop&overlay=1"
     bat_content = f"""@echo off
 chcp 65001 >nul
-title AGALAR SESLI SOHBET (Masaustu Ozel Surum)
-echo =======================================================
-echo   👑 AGALAR SESLI SOHBET Baslatiliyor...
-echo   Masaustu Ozel Surum & Dusuk RAM Modu (~35MB)
-echo =======================================================
+title AGALAR SESLI SOHBET - OYUN ICI OVERLAY ASISTANI
+echo =====================================================================
+echo   👑 AGALAR SESLI SOHBET ^& STEAM OYUN ICI OVERLAY BASLATILIYOR...
+echo =====================================================================
+echo   [KISAYOLLAR - OYUNDAYKEN CALISIR]
+echo   * Shift + Tab (veya Alt + Q) : Pencereyi Oyunun Ustune Getir / Gizle
+echo   * Alt + G                    : Hayalet Mod (Tıklamalar Oyuna Gecer!)
+echo   * Alt + Yukari / Asagi Ok    : Seffaflik Derecesini Ayarla (%%40-%%100)
+echo =====================================================================
 
-:: 1. Microsoft Edge App Modu (Windows Yerel - En dusuk RAM)
-start "" msedge.exe --app="{target_url}" 2>nul
-if %errorlevel% equ 0 exit
+:: 1. Tarayiciyi Uygulama Modunda Baslat
+start "" msedge.exe --app="{target_url}" --window-size=440,660 --window-position=30,40 2>nul
+if %errorlevel% neq 0 (
+    start "" chrome.exe --app="{target_url}" --window-size=440,660 --window-position=30,40 2>nul
+)
+if %errorlevel% neq 0 (
+    start "" "{target_url}"
+)
 
-:: 2. Google Chrome App Modu (Alternatif)
-start "" chrome.exe --app="{target_url}" 2>nul
-if %errorlevel% equ 0 exit
-
-:: 3. Varsayilan Tarayici
-start "" "{target_url}"
-exit
+:: 2. Win32 Global Kısayol, Her Zaman Ustte (TopMost) ve Seffaf Overlay Motoru
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+"Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class Win32Overlay {{
+    [DllImport(\"user32.dll\")] public static extern short GetAsyncKeyState(int vKey);
+    [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();
+    [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport(\"user32.dll\")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    [DllImport(\"user32.dll\")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport(\"user32.dll\")] public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    [DllImport(\"user32.dll\")] public static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+}}
+'@; ^
+$GWL_EXSTYLE = -20; $WS_EX_LAYERED = 0x80000; $WS_EX_TRANSPARENT = 0x20; $LWA_ALPHA = 0x2; ^
+$HWND_TOPMOST = [IntPtr]::new(-1); $SWP_NOMOVE = 0x0002; $SWP_NOSIZE = 0x0001; $SWP_SHOWWINDOW = 0x0040; ^
+$alpha = 225; $visible = $true; $ghost = $false; $targetHwnd = [IntPtr]::Zero; ^
+Write-Host '  [AKTIF] Agalar Oyun Ici Overlay Asistani calisiyor...' -ForegroundColor Green; ^
+while ($true) {{ ^
+    if ($targetHwnd -eq [IntPtr]::Zero) {{ ^
+        $procs = Get-Process | Where-Object {{ $_.MainWindowTitle -like '*AGALAR*' -and $_.MainWindowHandle -ne 0 }}; ^
+        if ($procs) {{ ^
+            $targetHwnd = $procs[0].MainWindowHandle; ^
+            $style = [Win32Overlay]::GetWindowLong($targetHwnd, $GWL_EXSTYLE); ^
+            [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -bor $WS_EX_LAYERED)) | Out-Null; ^
+            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null; ^
+            [Win32Overlay]::SetWindowPos($targetHwnd, $HWND_TOPMOST, 0, 0, 0, 0, ($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)) | Out-Null; ^
+            Write-Host '  [BAGLANDI] Agalar penceresi yakalandi! Seffaf & Her Zaman Ustte modu aktif.' -ForegroundColor Cyan; ^
+        }} ^
+    }} else {{ ^
+        $shift = ([Win32Overlay]::GetAsyncKeyState(0x10) -band 0x8000) -ne 0; ^
+        $tab   = ([Win32Overlay]::GetAsyncKeyState(0x09) -band 0x8000) -ne 0; ^
+        $alt   = ([Win32Overlay]::GetAsyncKeyState(0x12) -band 0x8000) -ne 0; ^
+        $keyQ  = ([Win32Overlay]::GetAsyncKeyState(0x51) -band 0x8000) -ne 0; ^
+        $keyG  = ([Win32Overlay]::GetAsyncKeyState(0x47) -band 0x8000) -ne 0; ^
+        $up    = ([Win32Overlay]::GetAsyncKeyState(0x26) -band 0x8000) -ne 0; ^
+        $down  = ([Win32Overlay]::GetAsyncKeyState(0x28) -band 0x8000) -ne 0; ^
+        if (($shift -and $tab) -or ($alt -and $keyQ)) {{ ^
+            $visible = -not $visible; ^
+            if ($visible) {{ ^
+                [Win32Overlay]::ShowWindow($targetHwnd, 9) | Out-Null; ^
+                [Win32Overlay]::SetWindowPos($targetHwnd, $HWND_TOPMOST, 0, 0, 0, 0, ($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)) | Out-Null; ^
+                [Win32Overlay]::SetForegroundWindow($targetHwnd) | Out-Null; ^
+            }} else {{ ^
+                [Win32Overlay]::ShowWindow($targetHwnd, 6) | Out-Null; ^
+            }} ^
+            Start-Sleep -Milliseconds 350; ^
+        }} ^
+        if ($alt -and $keyG) {{ ^
+            $ghost = -not $ghost; ^
+            $style = [Win32Overlay]::GetWindowLong($targetHwnd, $GWL_EXSTYLE); ^
+            if ($ghost) {{ ^
+                [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -bor $WS_EX_LAYERED -bor $WS_EX_TRANSPARENT)) | Out-Null; ^
+                [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, 165, $LWA_ALPHA) | Out-Null; ^
+                Write-Host '  [HAYALET MOD AÇIK] Tiklamalar oyuna geciyor (Alt+G ile kapatilir)' -ForegroundColor Yellow; ^
+            }} else {{ ^
+                [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -band (-bnot $WS_EX_TRANSPARENT))) | Out-Null; ^
+                [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null; ^
+                Write-Host '  [HAYALET MOD KAPALI] Pencere tekrar tiklanabilir' -ForegroundColor Green; ^
+            }} ^
+            Start-Sleep -Milliseconds 350; ^
+        }} ^
+        if ($alt -and $up) {{ ^
+            $alpha = [Math]::Min(255, $alpha + 20); ^
+            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null; ^
+            Start-Sleep -Milliseconds 180; ^
+        }} ^
+        if ($alt -and $down) {{ ^
+            $alpha = [Math]::Max(95, $alpha - 20); ^
+            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null; ^
+            Start-Sleep -Milliseconds 180; ^
+        }} ^
+    }} ^
+    Start-Sleep -Milliseconds 45; ^
+}}"
 """
     return Response(
         content=bat_content.encode("utf-8"),
