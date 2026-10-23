@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Agalar">
     <link rel="apple-touch-icon" href="/icon-192.png">
-    <link rel="stylesheet" href="/static/style.css?v=20261023_8">
+    <link rel="stylesheet" href="/static/style.css?v=20261023_9">
 </head>
 <body>
     <!-- MASAÜSTÜ SİNEMATİK AÇILIŞ ANİMASYONU (SPLASH SCREEN) -->
@@ -683,56 +683,68 @@
                         </div>
                     </div>
 
-                    <!-- 4. STEAM TARZI OYUN İÇİ ŞEFFAF OVERLAY & HER ZAMAN ÜSTTE (PiP) PANELİ -->
+                    <!-- 4. STEAM TARZI OYUN İÇİ ŞEFFAF OVERLAY & HER ZAMAN ÜSTTE (PiP) PANELİ (.BAT GEREKTİRMEZ) -->
                     <div id="game-overlay-drawer" class="feature-drawer hidden">
                         <div class="feature-drawer-header">
                             <div class="fd-title">
-                                <span>🕹️ Steam Tarzı Oyun İçi Şeffaf Overlay & Üste Sabitleme</span>
-                                <span class="fd-subtitle">Oyundayken kimlerin konuştuğunu şeffaf ekranda görün ve klavye kısayollarıyla yönetin</span>
+                                <span>🕹️ Steam Tarzı Oyun İçi Şeffaf Overlay (.bat veya Program Kurulumu Gerektirmez)</span>
+                                <span class="fd-subtitle">Tarayıcı izniyle oyundayken ekranın üstünde şeffaf kalır, konuşanları gösterir ve klavye kısayollarıyla yönetilir</span>
                             </div>
                             <button type="button" id="btn-close-game-overlay" class="btn-fd-close">✕</button>
                         </div>
                         <div class="game-overlay-drawer-grid">
-                            <!-- Seçenek 1: Tarayıcı Üstte Kalan Mini PiP Penceresi -->
+                            <!-- Seçenek 1: Tarayıcı İzni İste & Otomatik Üste Sabitle -->
                             <div class="god-card highlight">
+                                <div class="god-card-head">
+                                    <span class="god-icon">🛡️</span>
+                                    <div>
+                                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                                            <h4 style="margin:0;">1. Tarayıcı İzni Ver & Oyunda Üste Al</h4>
+                                            <span id="overlay-perm-badge" class="badge" style="font-size:10px;padding:2px 7px;background:rgba(16,185,129,0.2);color:#6ee7b7;border-radius:99px;">Kurulumsuz</span>
+                                        </div>
+                                        <p>Hiçbir dosya indirmeden tarayıcıdan <strong>Bildirim, Otomatik PiP ve Global Medya Tuşu</strong> izni alır. Oyuna geçtiğinizde (<kbd>Alt+Tab</kbd>) şeffaf pencere otomatik üstte kalır!</p>
+                                    </div>
+                                </div>
+                                <label class="checkbox-label" style="font-size:11.5px;color:#cbd5e1;display:flex;align-items:center;gap:6px;cursor:pointer;">
+                                    <input type="checkbox" id="chk-auto-pip-game" checked>
+                                    <span>Oyuna geçince (Alt+Tab) otomatik üste sabitle</span>
+                                </label>
+                                <button type="button" id="btn-request-overlay-perm" class="btn-primary god-btn">
+                                    <span>🛡️ İzin Ver & Oyun İçi Overlay'i Başlat</span>
+                                </button>
+                            </div>
+
+                            <!-- Seçenek 2: Şeffaf Yüzen Steam Overlay Penceresi (PiP HUD 2.0) -->
+                            <div class="god-card">
                                 <div class="god-card-head">
                                     <span class="god-icon">📌</span>
                                     <div>
-                                        <h4>1. Her Zaman Üstte Mini HUD (Kurulumsuz)</h4>
-                                        <p>Oyununuzun üst köşesinde asılı kalan, kimin konuştuğunu gösteren ve mikrofon/oda kontrolü sunan mini pencere açar.</p>
+                                        <h4>2. Her Zaman Üstte Şeffaf Mini Pencere</h4>
+                                        <p>Oyununuzun üst köşesinde asılı kalan şeffaf pencerede <strong>konuşanların yeşil halkasını</strong> görün, <strong>arkadaşınızın sesini kısın</strong> ve oyundan çıkmadan <strong>mesaj yazın</strong>.</p>
                                     </div>
                                 </div>
-                                <button type="button" id="btn-launch-pip-overlay" class="btn-primary god-btn">
-                                    <span>📌 Mini Overlay Penceresini Üste Sabitle (PiP)</span>
+                                <button type="button" id="btn-launch-pip-overlay" class="btn-secondary god-btn">
+                                    <span>📌 Şeffaf Mini Pencereyi Şimdi Üste Aç</span>
                                 </button>
                             </div>
 
-                            <!-- Seçenek 2: Şeffaf Steam HUD Görünümü (Shift + Tab) -->
+                            <!-- Seçenek 3: Şeffaf Steam HUD Görünümü & Oyundayken Kısayollar -->
                             <div class="god-card">
                                 <div class="god-card-head">
-                                    <span class="god-icon">👻</span>
+                                    <span class="god-icon">⌨️</span>
                                     <div>
-                                        <h4>2. Şeffaf Steam Overlay Görünümü (<kbd>Shift</kbd>+<kbd>Tab</kbd>)</h4>
-                                        <p>Uygulamayı yarı-şeffaf, kompakt Steam arayüzüne dönüştürür. Şeffaflık oranını dilediğiniz gibi ayarlayabilirsiniz.</p>
+                                        <h4>3. Klavye Kısayolları & Şeffaf Mod</h4>
+                                        <p>
+                                            • <kbd>Shift</kbd>+<kbd>Tab</kbd> : Şeffaf Steam Modu Aç/Kapat<br>
+                                            • <kbd>⏯️ Play/Pause</kbd> : Oyundayken Mikrofon Aç/Kapat<br>
+                                            • <kbd>⏭️ Next</kbd> : Oyundayken Kulaklık Kapat/Aç<br>
+                                            • <kbd>⏮️ Prev</kbd> : Oyundayken Ses Odası Değiştir
+                                        </p>
                                     </div>
                                 </div>
                                 <button type="button" id="btn-activate-steam-hud" class="btn-secondary god-btn">
-                                    <span>👻 Şeffaf Steam Overlay Modunu Aç / Kapat</span>
+                                    <span>👻 Tam Ekran Şeffaf Steam Modu (Shift+Tab)</span>
                                 </button>
-                            </div>
-
-                            <!-- Seçenek 3: Windows Global Kısayol & Hayalet Mod (.bat) -->
-                            <div class="god-card">
-                                <div class="god-card-head">
-                                    <span class="god-icon">⚡</span>
-                                    <div>
-                                        <h4>3. Tam Ekran Oyun Kısayol & Hayalet Mod Asistanı</h4>
-                                        <p>Oyunun içindeyken <kbd>Shift+Tab</kbd> ile pencereyi oyunun üstüne getirir, <kbd>Alt+G</kbd> ile <strong>Hayalet Mod</strong> açarak fare tıklamalarının içinden oyuna geçmesini sağlar!</p>
-                                    </div>
-                                </div>
-                                <a id="btn-download-overlay-bat" href="/api/download-launcher" download="AGALAR-Sesli-Sohbet.bat" class="btn-secondary god-btn" style="text-decoration:none;">
-                                    <span>⬇️ Windows Oyun Overlay Başlatıcısını İndir (.bat)</span>
-                                </a>
                             </div>
                         </div>
                     </div>
@@ -1223,6 +1235,6 @@
     </div>
 
     <!-- SESLERİ OYNATMAK İÇİN SENTEZLEME YAZILIMI APP.JS İÇİNDE BULUNMAKTADIR -->
-    <script src="/static/app.js?v=20261023_8"></script>
+    <script src="/static/app.js?v=20261023_9"></script>
 </body>
 </html>

@@ -392,6 +392,9 @@ const el = {
     btnSohExit: document.getElementById('btn-soh-exit'),
     gameOverlayDrawer: document.getElementById('game-overlay-drawer'),
     btnCloseGameOverlay: document.getElementById('btn-close-game-overlay'),
+    btnRequestOverlayPerm: document.getElementById('btn-request-overlay-perm'),
+    overlayPermBadge: document.getElementById('overlay-perm-badge'),
+    chkAutoPipGame: document.getElementById('chk-auto-pip-game'),
     btnLaunchPipOverlay: document.getElementById('btn-launch-pip-overlay'),
     btnActivateSteamHud: document.getElementById('btn-activate-steam-hud'),
     btnDownloadOverlayBat: document.getElementById('btn-download-overlay-bat')
@@ -1819,8 +1822,22 @@ function handleServerMessage(msg) {
                 appendChatMessage(msg);
             }
 
+            // Her zaman üstte açık olan PiP Overlay penceresindeki mini sohbeti güncelle
+            updatePipOverlayUI(true);
+
             if (msg.sender_id !== state.myId) {
                 SoundEffects.chatMessage();
+                // Oyundayken (arka plandayken) masaüstü bildirimi göster
+                if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+                    try {
+                        new Notification(`💬 ${msg.nickname || 'Yeni Mesaj'} (${state.roomId || 'Oda'})`, {
+                            body: msg.text || '📷 Görsel gönderdi',
+                            icon: '/static/logo.png',
+                            silent: true,
+                            tag: 'agalar-chat-msg'
+                        });
+                    } catch (e) {}
+                }
                 // Mobil ve Alt Dock Okunmamış Mesaj Göstergesi
                 const isChatOpen = el.chatSection && el.chatSection.classList.contains('chat-open') && !el.chatSection.classList.contains('hidden');
                 if (!isChatOpen) {
@@ -1979,6 +1996,15 @@ function handleServerMessage(msg) {
                 myCard.classList.add('card-nudge-shake');
             }
             showToast('🔔', `<strong>${escapeHtml(msg.from_nickname)}</strong> seni dürttü! Hey, orada mısın? 👋`, 'toast-nudge');
+            if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+                try {
+                    new Notification(`🔔 ${msg.from_nickname || 'Arkadaşın'} Seni Dürttü!`, {
+                        body: 'Hey, oyunda mısın? Ses odasından dürtüldün!',
+                        icon: '/static/logo.png',
+                        tag: 'agalar-nudge'
+                    });
+                } catch (e) {}
+            }
             break;
 
         case 'pong':
@@ -2840,10 +2866,239 @@ function showToast(icon, htmlText, extraClass = '') {
 }
 
 // ============================================================================
-// 6.8 STEAM TARZI OYUN İÇİ ŞEFFAF OVERLAY (SHIFT+TAB) VE PiP MİNİ PENCERE
+// 6.8 STEAM TARZI OYUN İÇİ ŞEFFAF OVERLAY (.BAT GEREKTİRMEZ, İZİN TABANLI) & PiP HUD 2.0
 // ============================================================================
 let steamOverlayClockTimer = null;
 let pipOverlayWindow = null;
+let pipCompactMode = false;
+let overlayWakeLock = null;
+let pipFallbackCanvas = null;
+let pipFallbackVideo = null;
+let pipFallbackTimer = null;
+let overlayPermInitialized = false;
+
+async function requestOverlayPermissionsAndStart() {
+    try {
+        // 1. Tarayıcı Bildirim İzni İste (Oyundayken mesaj/dürtme bildirimi için)
+        if ('Notification' in window && Notification.permission === 'default') {
+            try {
+                await Notification.requestPermission();
+            } catch (e) {}
+        }
+
+        // 2. Ekran Uyku Kilidi (WakeLock) İzni (Oyundayken tarayıcının arka planda uyumasını engeller)
+        if ('wakeLock' in navigator && !overlayWakeLock) {
+            try {
+                overlayWakeLock = await navigator.wakeLock.request('screen');
+                overlayWakeLock.addEventListener('release', () => {
+                    overlayWakeLock = null;
+                });
+            } catch (e) {}
+        }
+
+        // 3. Global Medya Tuşları (Play/Pause -> Mute, Next -> Deafen, Prev -> Oda Değiştir) ve Otomatik PiP Kancası
+        await initGlobalMediaKeyAndAutoPipHook();
+
+        // 4. Rozet ve Buton Durumunu Güncelle
+        try {
+            localStorage.setItem('agalar_overlay_perm', '1');
+        } catch (e) {}
+        updateOverlayPermissionBadgeUI(true);
+
+        showToast('🛡️', '<strong>Oyun İçi Overlay İzinleri Verildi!</strong> Şeffaf pencere açılıyor ve klavye medya tuşları aktif.');
+
+        // 5. Şeffaf Her Zaman Üstte Mini Pencereyi (PiP HUD 2.0) Hemen Aç
+        await openPipGameOverlay();
+    } catch (err) {
+        console.warn("Overlay izin başlatma uyarısı:", err);
+        await openPipGameOverlay();
+    }
+}
+
+function updateOverlayPermissionBadgeUI(isGranted) {
+    if (el.overlayPermBadge) {
+        if (isGranted) {
+            el.overlayPermBadge.textContent = '✔ İzin Verildi & Aktif';
+            el.overlayPermBadge.style.background = 'rgba(16, 185, 129, 0.28)';
+            el.overlayPermBadge.style.color = '#6ee7b7';
+        }
+    }
+    if (el.btnRequestOverlayPerm && isGranted) {
+        el.btnRequestOverlayPerm.innerHTML = '<span>📌 İzinler Aktif • Şeffaf Overlay Penceresini Üste Aç</span>';
+    }
+}
+
+function renderFallbackHudCanvas() {
+    if (!pipFallbackCanvas) return;
+    const ctx = pipFallbackCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = pipFallbackCanvas.width;
+    const h = pipFallbackCanvas.height;
+
+    // Koyu yarı-şeffaf oyun HUD arka planı
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(1, '#070a12');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Üst şerit
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.14)';
+    ctx.fillRect(0, 0, w, 34);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 13px Segoe UI, sans-serif';
+    ctx.fillText('🕹️ AGALAR OYUN OVERLAY', 12, 22);
+
+    const chName = state.channelNames[state.voiceChannel] || 'Ses Odası 1';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = 'bold 12px Segoe UI, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(chName, w - 12, 22);
+    ctx.textAlign = 'left';
+
+    // Mikrofon & Kulaklık Durumu
+    ctx.fillStyle = state.isMuted ? '#f43f5e' : '#10b981';
+    ctx.font = 'bold 12px Segoe UI, sans-serif';
+    ctx.fillText(state.isMuted ? '🔇 Mikrofon Kapalı' : '🎙️ Mikrofon Açık', 12, 56);
+
+    ctx.fillStyle = state.isDeafened ? '#f43f5e' : '#94a3b8';
+    ctx.fillText(state.isDeafened ? '🔕 Kulaklık Kapalı' : '🎧 Kulaklık Açık', 185, 56);
+
+    // Konuşan Üyeler Listesi
+    const members = [
+        {
+            nickname: (state.nickname || 'Sen') + ' (Sen)',
+            speaking: state.isSpeaking,
+            muted: state.isMuted
+        }
+    ];
+    Object.values(state.allUsers).forEach(u => {
+        if (u.voice_channel === state.voiceChannel && u.client_id !== state.myId) {
+            members.push({
+                nickname: u.nickname || 'Üye',
+                speaking: Boolean(u.is_speaking),
+                muted: Boolean(u.is_muted)
+            });
+        }
+    });
+
+    let y = 84;
+    members.slice(0, 5).forEach(m => {
+        ctx.fillStyle = m.speaking ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.05)';
+        ctx.fillRect(10, y - 16, w - 20, 24);
+        if (m.speaking) {
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(10, y - 16, w - 20, 24);
+        }
+        ctx.fillStyle = m.speaking ? '#6ee7b7' : '#f1f5f9';
+        ctx.font = m.speaking ? 'bold 12px Segoe UI, sans-serif' : '12px Segoe UI, sans-serif';
+        const prefix = m.speaking ? '🟢 ' : (m.muted ? '🔇 ' : '⚪ ');
+        ctx.fillText(prefix + m.nickname, 18, y);
+        y += 28;
+    });
+}
+
+async function initGlobalMediaKeyAndAutoPipHook() {
+    if (overlayPermInitialized) return;
+    overlayPermInitialized = true;
+
+    try {
+        // Gizli Canlı HUD Canvas + Video oluştur (Auto-PiP ve Global Medya Tuşlarını tetiklemek için)
+        pipFallbackCanvas = document.createElement('canvas');
+        pipFallbackCanvas.width = 340;
+        pipFallbackCanvas.height = 230;
+        renderFallbackHudCanvas();
+
+        pipFallbackVideo = document.createElement('video');
+        pipFallbackVideo.id = 'pip-hud-video';
+        pipFallbackVideo.muted = false;
+        pipFallbackVideo.volume = 0.01;
+        pipFallbackVideo.playsInline = true;
+        pipFallbackVideo.setAttribute('autopictureinpicture', '');
+        pipFallbackVideo.style.cssText = 'position:fixed;left:-9999px;bottom:-9999px;width:2px;height:2px;opacity:0.01;pointer-events:none;';
+        document.body.appendChild(pipFallbackVideo);
+
+        const canvasStream = pipFallbackCanvas.captureStream ? pipFallbackCanvas.captureStream(5) : null;
+        if (canvasStream) {
+            // Windows MediaSession'ın tam ekran oyundayken klavye medya tuşlarını dinlemesi için sessiz ses track'i ekle
+            try {
+                SoundEffects.init();
+                if (state.audioCtx) {
+                    const silentDest = state.audioCtx.createMediaStreamDestination();
+                    const osc = state.audioCtx.createOscillator();
+                    const silentGain = state.audioCtx.createGain();
+                    silentGain.gain.value = 0.0001;
+                    osc.connect(silentGain);
+                    silentGain.connect(silentDest);
+                    osc.start();
+                    const silentTrack = silentDest.stream.getAudioTracks()[0];
+                    if (silentTrack) canvasStream.addTrack(silentTrack);
+                }
+            } catch (e) {}
+
+            pipFallbackVideo.srcObject = canvasStream;
+            await pipFallbackVideo.play().catch(() => {});
+        }
+
+        clearInterval(pipFallbackTimer);
+        pipFallbackTimer = setInterval(() => {
+            renderFallbackHudCanvas();
+        }, 500);
+
+        // Global Donanım Medya Tuşları & Otomatik Oyuna Geçişte (Alt+Tab) Üste Sabitleme (MediaSession API)
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: 'AGALAR Sesli Sohbet Overlay',
+                artist: state.channelNames[state.voiceChannel] || 'Ses Odası',
+                album: 'Oyun İçi İletişim'
+            });
+
+            // ⏯️ Play / Pause Tuşu -> Oyundayken Mikrofonu Aç / Kapat
+            const handleGlobalMicToggle = () => {
+                toggleMute();
+                updatePipOverlayUI();
+                renderFallbackHudCanvas();
+            };
+            try { navigator.mediaSession.setActionHandler('play', handleGlobalMicToggle); } catch (e) {}
+            try { navigator.mediaSession.setActionHandler('pause', handleGlobalMicToggle); } catch (e) {}
+
+            // ⏭️ Next Track Tuşu -> Oyundayken Kulaklığı Sağırlaştır / Aç
+            try {
+                navigator.mediaSession.setActionHandler('nexttrack', () => {
+                    toggleDeafen();
+                    updatePipOverlayUI();
+                    renderFallbackHudCanvas();
+                });
+            } catch (e) {}
+
+            // ⏮️ Previous Track Tuşu -> Oyundayken Ses Odasını Değiştir (Oda 1 -> 2 -> 3 -> 4 -> 5)
+            try {
+                navigator.mediaSession.setActionHandler('previoustrack', () => {
+                    const chs = ['channel-1', 'channel-2', 'channel-3', 'channel-4', 'channel-5'];
+                    const idx = chs.indexOf(state.voiceChannel);
+                    const nextCh = chs[(idx + 1) % chs.length];
+                    switchVoiceChannel(nextCh);
+                    updatePipOverlayUI();
+                    renderFallbackHudCanvas();
+                });
+            } catch (e) {}
+
+            // Oyuna geçildiğinde (Alt+Tab) tarayıcı otomatik olarak bu kancayı çağırır
+            try {
+                navigator.mediaSession.setActionHandler('enterpictureinpicture', () => {
+                    const autoPipEnabled = el.chkAutoPipGame ? el.chkAutoPipGame.checked : true;
+                    if (autoPipEnabled) {
+                        openPipGameOverlay();
+                    }
+                });
+            } catch (e) {}
+        }
+    } catch (e) {
+        console.warn("Global medya tuşları ve Auto-PiP kurulum uyarısı:", e);
+    }
+}
 
 function toggleSteamOverlayMode(forceState = null) {
     const isCurrentlyActive = document.body.classList.contains('steam-overlay-mode');
@@ -2888,65 +3143,100 @@ function setOverlayOpacity(percent) {
     }
 }
 
+function sendPipQuickChat(text) {
+    const clean = (text || '').trim();
+    if (!clean) return;
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+
+    state.ws.send(JSON.stringify({
+        type: 'chat',
+        text: clean,
+        image_url: null,
+        is_private: false,
+        target_id: null
+    }));
+}
+
 async function openPipGameOverlay() {
-    // 1. Modern Chromium (Chrome / Edge) Document Picture-in-Picture API (Her Zaman Üstte İnteraktif Mini Pencere)
+    // Arka plan medya tuşları henüz başlatılmadıysa başlat
+    if (!overlayPermInitialized) {
+        initGlobalMediaKeyAndAutoPipHook().catch(() => {});
+    }
+
+    // 1. Modern Chromium (Chrome / Edge / Brave / Opera) Document Picture-in-Picture API
+    // (.bat gerektirmeden oyunun üstünde kalan interaktif, şeffaf görünümlü Steam Overlay penceresi)
     if ('documentPictureInPicture' in window) {
         try {
             if (pipOverlayWindow && !pipOverlayWindow.closed) {
                 pipOverlayWindow.focus();
+                updatePipOverlayUI(true);
                 return;
             }
             const pipWin = await window.documentPictureInPicture.requestWindow({
-                width: 320,
-                height: 270
+                width: 345,
+                height: 410
             });
             pipOverlayWindow = pipWin;
+            pipCompactMode = false;
 
             pipWin.document.head.innerHTML = `
                 <meta charset="utf-8">
-                <title>AGALAR - Oyun İçi Ses Overlay</title>
+                <title>AGALAR - Oyun İçi Steam Overlay</title>
                 <style>
+                    :root { --pip-alpha: 0.90; }
                     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
                     body {
-                        background: radial-gradient(circle at top, #131829, #090c15);
+                        background: rgba(9, 13, 24, var(--pip-alpha));
                         color: #f8fafc;
-                        padding: 10px;
+                        padding: 8px 10px;
                         height: 100vh;
                         display: flex;
                         flex-direction: column;
-                        gap: 8px;
+                        gap: 7px;
                         overflow: hidden;
                     }
                     .pip-header {
                         display: flex;
                         align-items: center;
                         justify-content: space-between;
-                        padding: 6px 10px;
-                        border-radius: 10px;
+                        padding: 5px 9px;
+                        border-radius: 9px;
                         background: rgba(255,255,255,0.05);
-                        border: 1px solid rgba(255,255,255,0.1);
+                        border: 1px solid rgba(56, 189, 248, 0.25);
                     }
-                    .pip-title { font-size: 11.5px; font-weight: 900; color: #38bdf8; letter-spacing: 0.4px; }
-                    .pip-channel { font-size: 11px; font-weight: 700; color: #cbd5e1; }
+                    .pip-title { font-size: 11px; font-weight: 900; color: #38bdf8; letter-spacing: 0.4px; }
+                    .pip-header-right { display: flex; align-items: center; gap: 6px; }
+                    .pip-channel { font-size: 10.5px; font-weight: 800; color: #cbd5e1; }
+                    .pip-mini-btn {
+                        border: 1px solid rgba(255,255,255,0.16);
+                        background: rgba(255,255,255,0.08);
+                        color: #e2e8f0;
+                        font-size: 10px;
+                        font-weight: 800;
+                        padding: 2px 6px;
+                        border-radius: 6px;
+                        cursor: pointer;
+                    }
+                    .pip-mini-btn:hover { background: rgba(56, 189, 248, 0.25); color: #fff; }
                     .pip-controls {
                         display: grid;
                         grid-template-columns: 1fr 1fr;
-                        gap: 6px;
+                        gap: 5px;
                     }
                     .pip-btn {
                         border: 1px solid rgba(255,255,255,0.14);
                         background: rgba(255,255,255,0.07);
                         color: #fff;
-                        font-size: 11.5px;
+                        font-size: 11px;
                         font-weight: 800;
-                        padding: 7px 8px;
-                        border-radius: 9px;
+                        padding: 6px 8px;
+                        border-radius: 8px;
                         cursor: pointer;
                         display: flex;
                         align-items: center;
                         justify-content: center;
                         gap: 5px;
-                        transition: all 0.15s ease;
+                        transition: all 0.14s ease;
                     }
                     .pip-btn:hover { background: rgba(255,255,255,0.14); }
                     .pip-btn.danger { background: rgba(244, 63, 94, 0.28); border-color: rgba(244, 63, 94, 0.65); color: #fecdd3; }
@@ -2959,54 +3249,55 @@ async function openPipGameOverlay() {
                         border: 1px solid rgba(255,255,255,0.1);
                         background: rgba(255,255,255,0.04);
                         color: #94a3b8;
-                        font-size: 10px;
+                        font-size: 9.5px;
                         font-weight: 800;
                         padding: 4px 0;
-                        border-radius: 7px;
+                        border-radius: 6px;
                         cursor: pointer;
                     }
                     .pip-ch-btn.active {
-                        background: rgba(99, 102, 241, 0.32);
-                        border-color: rgba(99, 102, 241, 0.75);
+                        background: rgba(99, 102, 241, 0.35);
+                        border-color: rgba(99, 102, 241, 0.85);
                         color: #fff;
                     }
                     .pip-users {
                         flex: 1;
+                        min-height: 75px;
                         overflow-y: auto;
                         display: flex;
                         flex-direction: column;
-                        gap: 5px;
+                        gap: 4px;
                         padding-right: 2px;
                     }
                     .pip-user-row {
                         display: flex;
                         align-items: center;
-                        gap: 8px;
-                        padding: 6px 9px;
-                        border-radius: 9px;
+                        gap: 7px;
+                        padding: 5px 8px;
+                        border-radius: 8px;
                         background: rgba(255,255,255,0.04);
                         border: 1.5px solid rgba(255,255,255,0.07);
-                        transition: all 0.12s ease;
+                        transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
                     }
                     .pip-user-row.speaking {
-                        background: rgba(16, 185, 129, 0.16);
+                        background: rgba(16, 185, 129, 0.18);
                         border-color: #10b981;
-                        box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
+                        box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
                     }
                     .pip-avatar {
-                        width: 24px;
-                        height: 24px;
+                        width: 22px;
+                        height: 22px;
                         border-radius: 50%;
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        font-size: 11px;
+                        font-size: 10.5px;
                         font-weight: 900;
                         color: #fff;
                         flex-shrink: 0;
                     }
                     .pip-uname {
-                        font-size: 12px;
+                        font-size: 11.5px;
                         font-weight: 700;
                         color: #f1f5f9;
                         white-space: nowrap;
@@ -3014,16 +3305,115 @@ async function openPipGameOverlay() {
                         text-overflow: ellipsis;
                         flex: 1;
                     }
-                    .pip-ustatus {
+                    .pip-vol-wrap {
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                    }
+                    .pip-vol-slider {
+                        width: 58px;
+                        height: 4px;
+                        accent-color: #38bdf8;
+                        cursor: pointer;
+                    }
+                    .pip-vol-val {
+                        font-size: 9.5px;
+                        color: #94a3b8;
+                        min-width: 26px;
+                        text-align: right;
+                    }
+                    .pip-nudge-btn {
+                        border: none;
+                        background: rgba(245, 158, 11, 0.18);
+                        color: #fcd34d;
+                        border-radius: 5px;
+                        font-size: 10px;
+                        padding: 2px 5px;
+                        cursor: pointer;
+                    }
+                    .pip-nudge-btn:hover { background: rgba(245, 158, 11, 0.35); }
+                    .pip-ustatus { font-size: 10.5px; }
+                    .pip-sb-bar {
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                    }
+                    .pip-sb-btn {
+                        flex: 1;
+                        border: 1px solid rgba(255,255,255,0.09);
+                        background: rgba(255,255,255,0.04);
+                        color: #cbd5e1;
+                        font-size: 10px;
+                        font-weight: 700;
+                        padding: 3px 4px;
+                        border-radius: 6px;
+                        cursor: pointer;
+                    }
+                    .pip-sb-btn:hover { background: rgba(99, 102, 241, 0.25); color: #fff; }
+                    .pip-chat-box {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 4px;
+                        background: rgba(0, 0, 0, 0.28);
+                        border: 1px solid rgba(255,255,255,0.08);
+                        border-radius: 8px;
+                        padding: 5px 7px;
+                    }
+                    .pip-chat-list {
+                        max-height: 62px;
+                        overflow-y: auto;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 2px;
+                        font-size: 10.5px;
+                    }
+                    .pip-chat-item {
+                        color: #e2e8f0;
+                        line-height: 1.25;
+                        word-break: break-word;
+                    }
+                    .pip-chat-item strong { color: #38bdf8; }
+                    .pip-chat-form {
+                        display: flex;
+                        gap: 4px;
+                    }
+                    .pip-chat-input {
+                        flex: 1;
+                        background: rgba(255,255,255,0.07);
+                        border: 1px solid rgba(255,255,255,0.14);
+                        border-radius: 6px;
+                        padding: 4px 7px;
+                        color: #fff;
                         font-size: 11px;
+                        outline: none;
+                        user-select: text;
+                    }
+                    .pip-chat-input:focus { border-color: #38bdf8; }
+                    .pip-chat-send {
+                        background: #4f46e5;
+                        border: none;
+                        color: #fff;
+                        font-size: 10.5px;
+                        font-weight: 800;
+                        padding: 4px 8px;
+                        border-radius: 6px;
+                        cursor: pointer;
+                    }
+                    body.compact-hud .pip-channels-bar,
+                    body.compact-hud .pip-sb-bar,
+                    body.compact-hud .pip-chat-box {
+                        display: none !important;
                     }
                 </style>
             `;
 
             pipWin.document.body.innerHTML = `
                 <div class="pip-header">
-                    <span class="pip-title">🕹️ AGALAR OVERLAY</span>
-                    <span class="pip-channel" id="pip-ch-title">Ses Odası 1</span>
+                    <span class="pip-title">🕹️ STEAM OVERLAY</span>
+                    <div class="pip-header-right">
+                        <span class="pip-channel" id="pip-ch-title">Ses Odası 1</span>
+                        <button type="button" id="pip-btn-compact" class="pip-mini-btn" title="Sadece Konuşanları Göster (Mini HUD)">👻 Daralt</button>
+                    </div>
                 </div>
                 <div class="pip-controls">
                     <button type="button" id="pip-btn-mic" class="pip-btn">🎙️ Mikrofon</button>
@@ -3037,6 +3427,19 @@ async function openPipGameOverlay() {
                     <button type="button" class="pip-ch-btn" data-ch="channel-5">Oda 5</button>
                 </div>
                 <div class="pip-users" id="pip-users-list"></div>
+                <div class="pip-sb-bar">
+                    <button type="button" class="pip-sb-btn" data-sb="airhorn" title="Airhorn">🎺 Korna</button>
+                    <button type="button" class="pip-sb-btn" data-sb="rimshot" title="Ba-Dum-Tss">🥁 Espri</button>
+                    <button type="button" class="pip-sb-btn" data-sb="applause" title="Alkış">👏 Alkış</button>
+                    <button type="button" class="pip-sb-btn" data-sb="alarm" title="Alarm">🚨 Alarm</button>
+                </div>
+                <div class="pip-chat-box">
+                    <div class="pip-chat-list" id="pip-chat-list"></div>
+                    <form class="pip-chat-form" id="pip-chat-form">
+                        <input type="text" id="pip-chat-input" class="pip-chat-input" placeholder="Oyundan çıkmadan mesaj yaz..." maxlength="300" autocomplete="off">
+                        <button type="submit" class="pip-chat-send">Gönder</button>
+                    </form>
+                </div>
             `;
 
             pipWin.document.getElementById('pip-btn-mic').addEventListener('click', () => {
@@ -3047,30 +3450,82 @@ async function openPipGameOverlay() {
                 toggleDeafen();
                 updatePipOverlayUI();
             });
+            pipWin.document.getElementById('pip-btn-compact').addEventListener('click', () => {
+                pipCompactMode = !pipCompactMode;
+                pipWin.document.body.classList.toggle('compact-hud', pipCompactMode);
+                const btn = pipWin.document.getElementById('pip-btn-compact');
+                if (btn) btn.textContent = pipCompactMode ? '🗖 Genişlet' : '👻 Daralt';
+            });
             pipWin.document.querySelectorAll('.pip-ch-btn').forEach(b => {
                 b.addEventListener('click', () => {
                     const ch = b.getAttribute('data-ch');
                     if (ch) switchVoiceChannel(ch);
                 });
             });
+            pipWin.document.querySelectorAll('.pip-sb-btn').forEach(b => {
+                b.addEventListener('click', () => {
+                    const sb = b.getAttribute('data-sb');
+                    if (sb) sendSoundboardPlay(sb);
+                });
+            });
+
+            const chatForm = pipWin.document.getElementById('pip-chat-form');
+            const chatInput = pipWin.document.getElementById('pip-chat-input');
+            if (chatForm && chatInput) {
+                chatForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const val = chatInput.value.trim();
+                    if (val) {
+                        sendPipQuickChat(val);
+                        chatInput.value = '';
+                    }
+                });
+            }
+
+            // Mini pencere odaklıyken M ve D kısayolları (yazı yazılmıyorsa)
+            pipWin.addEventListener('keydown', (e) => {
+                const tag = (pipWin.document.activeElement?.tagName || '').toLowerCase();
+                if (tag === 'input' || tag === 'textarea') return;
+                if (e.code === 'KeyM' && !e.repeat) {
+                    toggleMute();
+                    updatePipOverlayUI();
+                } else if (e.code === 'KeyD' && !e.repeat) {
+                    toggleDeafen();
+                    updatePipOverlayUI();
+                }
+            });
 
             pipWin.addEventListener('pagehide', () => {
                 pipOverlayWindow = null;
             });
 
-            updatePipOverlayUI();
-            showToast('📌', '<strong>Mini Oyun Overlay Penceresi Açıldı!</strong> Oyununuzun üstünde sabit kalır.');
+            updatePipOverlayUI(true);
+            showToast('📌', '<strong>Oyun İçi Şeffaf Overlay Açıldı!</strong> Oyununuzun üstünde sabit kalır, ses ve sohbeti buradan yönetebilirsiniz.');
             return;
         } catch (err) {
-            console.warn("Document PiP açılamadı, alternatif mod deneniyor:", err);
+            console.warn("Document PiP açılamadı, alternatif video PiP deneniyor:", err);
         }
     }
 
-    // 2. Fallback: Şeffaf Steam Overlay Modunu aç
+    // 2. Fallback: Canlı Canvas Video PiP (Document PiP desteklemeyen tarayıcılar için her zaman üstte mini HUD)
+    if (pipFallbackVideo && typeof pipFallbackVideo.requestPictureInPicture === 'function') {
+        try {
+            renderFallbackHudCanvas();
+            await pipFallbackVideo.play().catch(() => {});
+            await pipFallbackVideo.requestPictureInPicture();
+            showToast('📌', '<strong>Her Zaman Üstte Canlı HUD Açıldı!</strong>');
+            return;
+        } catch (e) {
+            console.warn("Video PiP fallback açılamadı:", e);
+        }
+    }
+
+    // 3. Son Fallback: Tam Ekran Şeffaf Steam Overlay Modunu aç
     toggleSteamOverlayMode(true);
 }
 
-function updatePipOverlayUI() {
+function updatePipOverlayUI(forceChatRefresh = false) {
+    renderFallbackHudCanvas();
     if (!pipOverlayWindow || pipOverlayWindow.closed) return;
     try {
         const doc = pipOverlayWindow.document;
@@ -3082,13 +3537,13 @@ function updatePipOverlayUI() {
         const micBtn = doc.getElementById('pip-btn-mic');
         if (micBtn) {
             micBtn.className = `pip-btn ${state.isMuted ? 'danger' : ''}`;
-            micBtn.textContent = state.isMuted ? '🔇 Susturuldu' : '🎙️ Mikrofon Açık';
+            micBtn.textContent = state.isMuted ? '🔇 Susturuldu (M)' : '🎙️ Mikrofon Açık';
         }
 
         const deafBtn = doc.getElementById('pip-btn-deafen');
         if (deafBtn) {
             deafBtn.className = `pip-btn ${state.isDeafened ? 'danger' : ''}`;
-            deafBtn.textContent = state.isDeafened ? '🔕 Sağırlaştırıldı' : '🎧 Kulaklık Açık';
+            deafBtn.textContent = state.isDeafened ? '🔕 Sağırlaştırıldı (D)' : '🎧 Kulaklık Açık';
         }
 
         doc.querySelectorAll('.pip-ch-btn').forEach(b => {
@@ -3096,43 +3551,116 @@ function updatePipOverlayUI() {
         });
 
         const listEl = doc.getElementById('pip-users-list');
-        if (!listEl) return;
+        if (listEl) {
+            const members = [
+                {
+                    id: state.myId || 'self',
+                    isSelf: true,
+                    nickname: (state.nickname || 'Sen') + ' (Sen)',
+                    color: state.avatarColor || '#5865F2',
+                    speaking: state.isSpeaking,
+                    muted: state.isMuted,
+                    deafened: state.isDeafened,
+                    volume: 100
+                }
+            ];
 
-        const members = [
-            {
-                id: state.myId,
-                nickname: (state.nickname || 'Sen') + ' (Sen)',
-                color: state.avatarColor || '#5865F2',
-                speaking: state.isSpeaking,
-                muted: state.isMuted,
-                deafened: state.isDeafened
+            Object.values(state.allUsers).forEach(u => {
+                if (u.voice_channel === state.voiceChannel && u.client_id !== state.myId) {
+                    const peerObj = state.peers[u.client_id];
+                    const currentVol = (peerObj && typeof peerObj.volume === 'number')
+                        ? (peerObj.volume <= 2 ? Math.round(peerObj.volume * 100) : Math.round(peerObj.volume))
+                        : 100;
+                    members.push({
+                        id: u.client_id,
+                        isSelf: false,
+                        nickname: u.nickname || 'Üye',
+                        color: u.avatar_color || '#5865F2',
+                        speaking: Boolean(u.is_speaking),
+                        muted: Boolean(u.is_muted),
+                        deafened: Boolean(u.is_deafened),
+                        volume: currentVol
+                    });
+                }
+            });
+
+            const validIds = new Set(members.map(m => `pip-row-${m.id}`));
+            Array.from(listEl.children).forEach(child => {
+                if (!validIds.has(child.id)) child.remove();
+            });
+
+            members.forEach(m => {
+                const rowId = `pip-row-${m.id}`;
+                let row = doc.getElementById(rowId);
+                const init = (m.nickname || 'U').charAt(0).toUpperCase();
+                const icons = `${m.muted ? '🔇' : ''}${m.deafened ? '🎧' : ''}${m.speaking ? '🔊' : ''}`;
+
+                if (!row) {
+                    row = doc.createElement('div');
+                    row.id = rowId;
+                    row.className = `pip-user-row ${m.speaking ? 'speaking' : ''}`;
+                    row.innerHTML = `
+                        <div class="pip-avatar" style="background:${escapeHtml(m.color)}">${escapeHtml(init)}</div>
+                        <span class="pip-uname">${escapeHtml(m.nickname)}</span>
+                        ${!m.isSelf ? `
+                            <div class="pip-vol-wrap" title="Arkadaşın Ses Seviyesi (0% - 200%)">
+                                <input type="range" class="pip-vol-slider" min="0" max="200" value="${m.volume}" data-uid="${escapeHtml(m.id)}">
+                                <span class="pip-vol-val" id="pip-vol-val-${escapeHtml(m.id)}">${m.volume}%</span>
+                            </div>
+                            <button type="button" class="pip-nudge-btn" data-uid="${escapeHtml(m.id)}" title="Arkadaşını Dürt">🔔</button>
+                        ` : ''}
+                        <span class="pip-ustatus">${icons}</span>
+                    `;
+                    if (!m.isSelf) {
+                        const slider = row.querySelector('.pip-vol-slider');
+                        const valSpan = row.querySelector('.pip-vol-val');
+                        if (slider) {
+                            slider.addEventListener('input', (e) => {
+                                const v = parseInt(e.target.value) || 0;
+                                if (valSpan) valSpan.textContent = `${v}%`;
+                                setPeerVolume(m.id, v);
+                                // Ana ekrandaki kart slider'ını da senkronize et
+                                const mainSlider = document.querySelector(`.peer-volume-slider[data-user="${m.id}"]`);
+                                const mainVal = document.getElementById(`vol-val-${m.id}`);
+                                if (mainSlider) mainSlider.value = v;
+                                if (mainVal) mainVal.textContent = `${v}%`;
+                            });
+                        }
+                        const nudgeBtn = row.querySelector('.pip-nudge-btn');
+                        if (nudgeBtn) {
+                            nudgeBtn.addEventListener('click', () => {
+                                sendUserNudge(m.id, m.nickname);
+                            });
+                        }
+                    }
+                    listEl.appendChild(row);
+                } else {
+                    row.classList.toggle('speaking', Boolean(m.speaking));
+                    const unameEl = row.querySelector('.pip-uname');
+                    if (unameEl && unameEl.textContent !== m.nickname) unameEl.textContent = m.nickname;
+                    const statusEl = row.querySelector('.pip-ustatus');
+                    if (statusEl && statusEl.textContent !== icons) statusEl.textContent = icons;
+                }
+            });
+        }
+
+        // Mini Sohbet Listesini Güncelle
+        const chatListEl = doc.getElementById('pip-chat-list');
+        if (chatListEl) {
+            const msgCount = state.messages ? state.messages.length : 0;
+            if (forceChatRefresh || chatListEl.dataset.msgCount !== String(msgCount)) {
+                chatListEl.dataset.msgCount = String(msgCount);
+                const recent = (state.messages || []).filter(m => !m.is_private && m.text).slice(-6);
+                if (recent.length === 0) {
+                    chatListEl.innerHTML = '<div class="pip-chat-item" style="color:#64748b;">Henüz mesaj yok. Oyundan çıkmadan yazabilirsin!</div>';
+                } else {
+                    chatListEl.innerHTML = recent.map(m => `
+                        <div class="pip-chat-item"><strong>${escapeHtml(m.nickname || 'Üye')}:</strong> ${escapeHtml(m.text)}</div>
+                    `).join('');
+                    chatListEl.scrollTop = chatListEl.scrollHeight;
+                }
             }
-        ];
-
-        Object.values(state.allUsers).forEach(u => {
-            if (u.voice_channel === state.voiceChannel && u.client_id !== state.myId) {
-                members.push({
-                    id: u.client_id,
-                    nickname: u.nickname || 'Üye',
-                    color: u.avatar_color || '#5865F2',
-                    speaking: Boolean(u.is_speaking),
-                    muted: Boolean(u.is_muted),
-                    deafened: Boolean(u.is_deafened)
-                });
-            }
-        });
-
-        listEl.innerHTML = members.map(m => {
-            const init = (m.nickname || 'U').charAt(0).toUpperCase();
-            const icons = `${m.muted ? '🔇' : ''}${m.deafened ? '🎧' : ''}${m.speaking ? '🔊' : ''}`;
-            return `
-                <div class="pip-user-row ${m.speaking ? 'speaking' : ''}">
-                    <div class="pip-avatar" style="background:${escapeHtml(m.color)}">${escapeHtml(init)}</div>
-                    <span class="pip-uname">${escapeHtml(m.nickname)}</span>
-                    <span class="pip-ustatus">${icons}</span>
-                </div>
-            `;
-        }).join('');
+        }
     } catch (e) {}
 }
 
@@ -3770,6 +4298,7 @@ function switchToRoomUI() {
     el.dockAvatar.style.backgroundColor = state.avatarColor;
 
     renderVoiceChannelsUI();
+    initGlobalMediaKeyAndAutoPipHook().catch(() => {});
 
     // Mobilde başlangıçta ses odası ana görünüm olarak gelsin, çekmece ve sohbet kapalı olsun
     if (window.innerWidth <= 768) {
@@ -5049,6 +5578,11 @@ function initEventListeners() {
             openPipGameOverlay();
         });
     }
+    if (el.btnRequestOverlayPerm) {
+        el.btnRequestOverlayPerm.addEventListener('click', () => {
+            requestOverlayPermissionsAndStart();
+        });
+    }
     if (el.btnLaunchPipOverlay) {
         el.btnLaunchPipOverlay.addEventListener('click', () => {
             if (el.gameOverlayDrawer) el.gameOverlayDrawer.classList.add('hidden');
@@ -6089,6 +6623,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     initEventListeners();
     checkTunnelStatus();
     initDesktopExperience();
+    if (localStorage.getItem('agalar_overlay_perm') === '1' || ('Notification' in window && Notification.permission === 'granted')) {
+        updateOverlayPermissionBadgeUI(true);
+    }
     if (params.get('overlay') === '1') {
         toggleSteamOverlayMode(true);
     }
@@ -6158,7 +6695,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Service Worker Kaydı (PWA & Çevrimdışı Önbellek)
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=20261023_8').then((reg) => {
+        navigator.serviceWorker.register('/sw.js?v=20261023_9').then((reg) => {
             console.log('PWA ServiceWorker devrede:', reg.scope);
         }).catch((err) => {
             console.log('ServiceWorker kayıt detayı:', err);
