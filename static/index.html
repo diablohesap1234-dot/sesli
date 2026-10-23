@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Agalar">
     <link rel="apple-touch-icon" href="/icon-192.png">
-    <link rel="stylesheet" href="/static/style.css?v=20261023_7">
+    <link rel="stylesheet" href="/static/style.css?v=20261023_8">
 </head>
 <body>
     <!-- MASAÜSTÜ SİNEMATİK AÇILIŞ ANİMASYONU (SPLASH SCREEN) -->
@@ -304,6 +304,10 @@
                         <span id="theme-icon">🌌</span>
                         <span id="theme-label">Tema: Gece</span>
                     </button>
+                    <button type="button" id="btn-nav-pip-overlay" class="btn-nav-feature btn-nav-overlay-highlight" title="Oyundayken Üstte Kalan Şeffaf Mini Ses Penceresi Aç (PiP / Steam Overlay)">
+                        <span>🕹️</span>
+                        <span>Oyunda Üste Al</span>
+                    </button>
                 </div>
 
                 <div class="room-nav-right">
@@ -550,9 +554,35 @@
                                 <span>🎮</span>
                                 <span class="vcb-tool-text" id="status-btn-label">Durum Belirle</span>
                             </button>
+                            <button type="button" id="btn-toggle-game-overlay" class="btn-vcb-tool" title="Steam Tarzı Oyun İçi Şeffaf Overlay & Üstte Kalan Mini Pencere (Shift + Tab)">
+                                <span>🕹️</span>
+                                <span class="vcb-tool-text">Oyun Overlay</span>
+                            </button>
                             <button type="button" id="btn-vcb-screen-share" class="btn-vcb-tool highlight" title="Ekran veya Dizi Yayını Aç">
                                 <span>🖥️</span>
                                 <span class="vcb-tool-text">Ekran Paylaş</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- STEAM TARZI OYUN İÇİ ŞEFFAF HUD BARI (STEAM OVERLAY MODU AKTİFKEN GÖRÜNÜR) -->
+                    <div id="steam-overlay-hud-bar" class="steam-overlay-hud-bar hidden">
+                        <div class="soh-left">
+                            <span class="soh-badge">🕹️ STEAM OVERLAY MODU</span>
+                            <span id="soh-clock" class="soh-clock">00:00</span>
+                            <span class="soh-shortcut-hint">Kısayol: <kbd>Shift</kbd> + <kbd>Tab</kbd></span>
+                        </div>
+                        <div class="soh-center">
+                            <label for="slider-overlay-opacity">👻 Şeffaflık:</label>
+                            <input type="range" id="slider-overlay-opacity" min="35" max="100" step="5" value="82" class="soh-opacity-slider">
+                            <span id="overlay-opacity-val" class="soh-opacity-val">82%</span>
+                        </div>
+                        <div class="soh-right">
+                            <button type="button" id="btn-soh-pip" class="btn-soh-action highlight" title="Oyunun Üstünde Kalan Küçük Mini Pencere Aç">
+                                📌 Oyunda Üste Sabitle (PiP)
+                            </button>
+                            <button type="button" id="btn-soh-exit" class="btn-soh-action danger" title="Normal Görünüme Dön (Shift + Tab)">
+                                ✕ Normal Moda Dön
                             </button>
                         </div>
                     </div>
@@ -649,6 +679,60 @@
                             <div class="status-custom-row">
                                 <input type="text" id="custom-status-input" class="form-input-text" maxlength="40" placeholder="Özel durum yaz (Örn: 🔥 Dereceli maçtayım)...">
                                 <button type="button" id="btn-save-custom-status" class="btn-primary">Uygula</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. STEAM TARZI OYUN İÇİ ŞEFFAF OVERLAY & HER ZAMAN ÜSTTE (PiP) PANELİ -->
+                    <div id="game-overlay-drawer" class="feature-drawer hidden">
+                        <div class="feature-drawer-header">
+                            <div class="fd-title">
+                                <span>🕹️ Steam Tarzı Oyun İçi Şeffaf Overlay & Üste Sabitleme</span>
+                                <span class="fd-subtitle">Oyundayken kimlerin konuştuğunu şeffaf ekranda görün ve klavye kısayollarıyla yönetin</span>
+                            </div>
+                            <button type="button" id="btn-close-game-overlay" class="btn-fd-close">✕</button>
+                        </div>
+                        <div class="game-overlay-drawer-grid">
+                            <!-- Seçenek 1: Tarayıcı Üstte Kalan Mini PiP Penceresi -->
+                            <div class="god-card highlight">
+                                <div class="god-card-head">
+                                    <span class="god-icon">📌</span>
+                                    <div>
+                                        <h4>1. Her Zaman Üstte Mini HUD (Kurulumsuz)</h4>
+                                        <p>Oyununuzun üst köşesinde asılı kalan, kimin konuştuğunu gösteren ve mikrofon/oda kontrolü sunan mini pencere açar.</p>
+                                    </div>
+                                </div>
+                                <button type="button" id="btn-launch-pip-overlay" class="btn-primary god-btn">
+                                    <span>📌 Mini Overlay Penceresini Üste Sabitle (PiP)</span>
+                                </button>
+                            </div>
+
+                            <!-- Seçenek 2: Şeffaf Steam HUD Görünümü (Shift + Tab) -->
+                            <div class="god-card">
+                                <div class="god-card-head">
+                                    <span class="god-icon">👻</span>
+                                    <div>
+                                        <h4>2. Şeffaf Steam Overlay Görünümü (<kbd>Shift</kbd>+<kbd>Tab</kbd>)</h4>
+                                        <p>Uygulamayı yarı-şeffaf, kompakt Steam arayüzüne dönüştürür. Şeffaflık oranını dilediğiniz gibi ayarlayabilirsiniz.</p>
+                                    </div>
+                                </div>
+                                <button type="button" id="btn-activate-steam-hud" class="btn-secondary god-btn">
+                                    <span>👻 Şeffaf Steam Overlay Modunu Aç / Kapat</span>
+                                </button>
+                            </div>
+
+                            <!-- Seçenek 3: Windows Global Kısayol & Hayalet Mod (.bat) -->
+                            <div class="god-card">
+                                <div class="god-card-head">
+                                    <span class="god-icon">⚡</span>
+                                    <div>
+                                        <h4>3. Tam Ekran Oyun Kısayol & Hayalet Mod Asistanı</h4>
+                                        <p>Oyunun içindeyken <kbd>Shift+Tab</kbd> ile pencereyi oyunun üstüne getirir, <kbd>Alt+G</kbd> ile <strong>Hayalet Mod</strong> açarak fare tıklamalarının içinden oyuna geçmesini sağlar!</p>
+                                    </div>
+                                </div>
+                                <a id="btn-download-overlay-bat" href="/api/download-launcher" download="AGALAR-Sesli-Sohbet.bat" class="btn-secondary god-btn" style="text-decoration:none;">
+                                    <span>⬇️ Windows Oyun Overlay Başlatıcısını İndir (.bat)</span>
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -1139,6 +1223,6 @@
     </div>
 
     <!-- SESLERİ OYNATMAK İÇİN SENTEZLEME YAZILIMI APP.JS İÇİNDE BULUNMAKTADIR -->
-    <script src="/static/app.js?v=20261023_7"></script>
+    <script src="/static/app.js?v=20261023_8"></script>
 </body>
 </html>

@@ -379,7 +379,22 @@ const el = {
     customStatusInput: document.getElementById('custom-status-input'),
     btnSaveCustomStatus: document.getElementById('btn-save-custom-status'),
     floatingReactionsLayer: document.getElementById('floating-reactions-layer'),
-    toastContainer: document.getElementById('toast-container')
+    toastContainer: document.getElementById('toast-container'),
+
+    // Steam Tarzı Oyun İçi Şeffaf Overlay & PiP Mini Pencere Elemanları
+    btnNavPipOverlay: document.getElementById('btn-nav-pip-overlay'),
+    btnToggleGameOverlay: document.getElementById('btn-toggle-game-overlay'),
+    steamOverlayHudBar: document.getElementById('steam-overlay-hud-bar'),
+    sohClock: document.getElementById('soh-clock'),
+    sliderOverlayOpacity: document.getElementById('slider-overlay-opacity'),
+    overlayOpacityVal: document.getElementById('overlay-opacity-val'),
+    btnSohPip: document.getElementById('btn-soh-pip'),
+    btnSohExit: document.getElementById('btn-soh-exit'),
+    gameOverlayDrawer: document.getElementById('game-overlay-drawer'),
+    btnCloseGameOverlay: document.getElementById('btn-close-game-overlay'),
+    btnLaunchPipOverlay: document.getElementById('btn-launch-pip-overlay'),
+    btnActivateSteamHud: document.getElementById('btn-activate-steam-hud'),
+    btnDownloadOverlayBat: document.getElementById('btn-download-overlay-bat')
 };
 
 // ============================================================================
@@ -2824,12 +2839,310 @@ function showToast(icon, htmlText, extraClass = '') {
     }, 3400);
 }
 
+// ============================================================================
+// 6.8 STEAM TARZI OYUN İÇİ ŞEFFAF OVERLAY (SHIFT+TAB) VE PiP MİNİ PENCERE
+// ============================================================================
+let steamOverlayClockTimer = null;
+let pipOverlayWindow = null;
+
+function toggleSteamOverlayMode(forceState = null) {
+    const isCurrentlyActive = document.body.classList.contains('steam-overlay-mode');
+    const nextState = typeof forceState === 'boolean' ? forceState : !isCurrentlyActive;
+
+    document.body.classList.toggle('steam-overlay-mode', nextState);
+    if (el.steamOverlayHudBar) {
+        el.steamOverlayHudBar.classList.toggle('hidden', !nextState);
+    }
+    if (el.btnToggleGameOverlay) {
+        el.btnToggleGameOverlay.classList.toggle('active-drawer', nextState);
+    }
+
+    if (nextState) {
+        const currentOpacity = el.sliderOverlayOpacity ? parseInt(el.sliderOverlayOpacity.value) || 82 : 82;
+        setOverlayOpacity(currentOpacity);
+        const updateClock = () => {
+            if (el.sohClock) {
+                const now = new Date();
+                el.sohClock.textContent = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+            }
+        };
+        updateClock();
+        clearInterval(steamOverlayClockTimer);
+        steamOverlayClockTimer = setInterval(updateClock, 10000);
+        showToast('🕹️', '<strong>Steam Overlay Modu Aktif!</strong> (<kbd>Shift+Tab</kbd> ile açıp kapatabilirsiniz)');
+    } else {
+        clearInterval(steamOverlayClockTimer);
+        document.body.style.removeProperty('--overlay-alpha');
+        showToast('🕹️', 'Normal arayüz görünümüne dönüldü.');
+    }
+}
+
+function setOverlayOpacity(percent) {
+    const clamped = Math.max(35, Math.min(100, parseInt(percent) || 82));
+    document.body.style.setProperty('--overlay-alpha', (clamped / 100).toFixed(2));
+    if (el.overlayOpacityVal) {
+        el.overlayOpacityVal.textContent = `${clamped}%`;
+    }
+    if (el.sliderOverlayOpacity && parseInt(el.sliderOverlayOpacity.value) !== clamped) {
+        el.sliderOverlayOpacity.value = clamped;
+    }
+}
+
+async function openPipGameOverlay() {
+    // 1. Modern Chromium (Chrome / Edge) Document Picture-in-Picture API (Her Zaman Üstte İnteraktif Mini Pencere)
+    if ('documentPictureInPicture' in window) {
+        try {
+            if (pipOverlayWindow && !pipOverlayWindow.closed) {
+                pipOverlayWindow.focus();
+                return;
+            }
+            const pipWin = await window.documentPictureInPicture.requestWindow({
+                width: 320,
+                height: 270
+            });
+            pipOverlayWindow = pipWin;
+
+            pipWin.document.head.innerHTML = `
+                <meta charset="utf-8">
+                <title>AGALAR - Oyun İçi Ses Overlay</title>
+                <style>
+                    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
+                    body {
+                        background: radial-gradient(circle at top, #131829, #090c15);
+                        color: #f8fafc;
+                        padding: 10px;
+                        height: 100vh;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 8px;
+                        overflow: hidden;
+                    }
+                    .pip-header {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        padding: 6px 10px;
+                        border-radius: 10px;
+                        background: rgba(255,255,255,0.05);
+                        border: 1px solid rgba(255,255,255,0.1);
+                    }
+                    .pip-title { font-size: 11.5px; font-weight: 900; color: #38bdf8; letter-spacing: 0.4px; }
+                    .pip-channel { font-size: 11px; font-weight: 700; color: #cbd5e1; }
+                    .pip-controls {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 6px;
+                    }
+                    .pip-btn {
+                        border: 1px solid rgba(255,255,255,0.14);
+                        background: rgba(255,255,255,0.07);
+                        color: #fff;
+                        font-size: 11.5px;
+                        font-weight: 800;
+                        padding: 7px 8px;
+                        border-radius: 9px;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 5px;
+                        transition: all 0.15s ease;
+                    }
+                    .pip-btn:hover { background: rgba(255,255,255,0.14); }
+                    .pip-btn.danger { background: rgba(244, 63, 94, 0.28); border-color: rgba(244, 63, 94, 0.65); color: #fecdd3; }
+                    .pip-channels-bar {
+                        display: flex;
+                        gap: 4px;
+                    }
+                    .pip-ch-btn {
+                        flex: 1;
+                        border: 1px solid rgba(255,255,255,0.1);
+                        background: rgba(255,255,255,0.04);
+                        color: #94a3b8;
+                        font-size: 10px;
+                        font-weight: 800;
+                        padding: 4px 0;
+                        border-radius: 7px;
+                        cursor: pointer;
+                    }
+                    .pip-ch-btn.active {
+                        background: rgba(99, 102, 241, 0.32);
+                        border-color: rgba(99, 102, 241, 0.75);
+                        color: #fff;
+                    }
+                    .pip-users {
+                        flex: 1;
+                        overflow-y: auto;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 5px;
+                        padding-right: 2px;
+                    }
+                    .pip-user-row {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        padding: 6px 9px;
+                        border-radius: 9px;
+                        background: rgba(255,255,255,0.04);
+                        border: 1.5px solid rgba(255,255,255,0.07);
+                        transition: all 0.12s ease;
+                    }
+                    .pip-user-row.speaking {
+                        background: rgba(16, 185, 129, 0.16);
+                        border-color: #10b981;
+                        box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
+                    }
+                    .pip-avatar {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 11px;
+                        font-weight: 900;
+                        color: #fff;
+                        flex-shrink: 0;
+                    }
+                    .pip-uname {
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: #f1f5f9;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        flex: 1;
+                    }
+                    .pip-ustatus {
+                        font-size: 11px;
+                    }
+                </style>
+            `;
+
+            pipWin.document.body.innerHTML = `
+                <div class="pip-header">
+                    <span class="pip-title">🕹️ AGALAR OVERLAY</span>
+                    <span class="pip-channel" id="pip-ch-title">Ses Odası 1</span>
+                </div>
+                <div class="pip-controls">
+                    <button type="button" id="pip-btn-mic" class="pip-btn">🎙️ Mikrofon</button>
+                    <button type="button" id="pip-btn-deafen" class="pip-btn">🎧 Kulaklık</button>
+                </div>
+                <div class="pip-channels-bar" id="pip-ch-bar">
+                    <button type="button" class="pip-ch-btn" data-ch="channel-1">Oda 1</button>
+                    <button type="button" class="pip-ch-btn" data-ch="channel-2">Oda 2</button>
+                    <button type="button" class="pip-ch-btn" data-ch="channel-3">Oda 3</button>
+                    <button type="button" class="pip-ch-btn" data-ch="channel-4">Oda 4</button>
+                    <button type="button" class="pip-ch-btn" data-ch="channel-5">Oda 5</button>
+                </div>
+                <div class="pip-users" id="pip-users-list"></div>
+            `;
+
+            pipWin.document.getElementById('pip-btn-mic').addEventListener('click', () => {
+                toggleMute();
+                updatePipOverlayUI();
+            });
+            pipWin.document.getElementById('pip-btn-deafen').addEventListener('click', () => {
+                toggleDeafen();
+                updatePipOverlayUI();
+            });
+            pipWin.document.querySelectorAll('.pip-ch-btn').forEach(b => {
+                b.addEventListener('click', () => {
+                    const ch = b.getAttribute('data-ch');
+                    if (ch) switchVoiceChannel(ch);
+                });
+            });
+
+            pipWin.addEventListener('pagehide', () => {
+                pipOverlayWindow = null;
+            });
+
+            updatePipOverlayUI();
+            showToast('📌', '<strong>Mini Oyun Overlay Penceresi Açıldı!</strong> Oyununuzun üstünde sabit kalır.');
+            return;
+        } catch (err) {
+            console.warn("Document PiP açılamadı, alternatif mod deneniyor:", err);
+        }
+    }
+
+    // 2. Fallback: Şeffaf Steam Overlay Modunu aç
+    toggleSteamOverlayMode(true);
+}
+
+function updatePipOverlayUI() {
+    if (!pipOverlayWindow || pipOverlayWindow.closed) return;
+    try {
+        const doc = pipOverlayWindow.document;
+        const chTitle = doc.getElementById('pip-ch-title');
+        if (chTitle) {
+            chTitle.textContent = state.channelNames[state.voiceChannel] || state.voiceChannel;
+        }
+
+        const micBtn = doc.getElementById('pip-btn-mic');
+        if (micBtn) {
+            micBtn.className = `pip-btn ${state.isMuted ? 'danger' : ''}`;
+            micBtn.textContent = state.isMuted ? '🔇 Susturuldu' : '🎙️ Mikrofon Açık';
+        }
+
+        const deafBtn = doc.getElementById('pip-btn-deafen');
+        if (deafBtn) {
+            deafBtn.className = `pip-btn ${state.isDeafened ? 'danger' : ''}`;
+            deafBtn.textContent = state.isDeafened ? '🔕 Sağırlaştırıldı' : '🎧 Kulaklık Açık';
+        }
+
+        doc.querySelectorAll('.pip-ch-btn').forEach(b => {
+            b.classList.toggle('active', b.getAttribute('data-ch') === state.voiceChannel);
+        });
+
+        const listEl = doc.getElementById('pip-users-list');
+        if (!listEl) return;
+
+        const members = [
+            {
+                id: state.myId,
+                nickname: (state.nickname || 'Sen') + ' (Sen)',
+                color: state.avatarColor || '#5865F2',
+                speaking: state.isSpeaking,
+                muted: state.isMuted,
+                deafened: state.isDeafened
+            }
+        ];
+
+        Object.values(state.allUsers).forEach(u => {
+            if (u.voice_channel === state.voiceChannel && u.client_id !== state.myId) {
+                members.push({
+                    id: u.client_id,
+                    nickname: u.nickname || 'Üye',
+                    color: u.avatar_color || '#5865F2',
+                    speaking: Boolean(u.is_speaking),
+                    muted: Boolean(u.is_muted),
+                    deafened: Boolean(u.is_deafened)
+                });
+            }
+        });
+
+        listEl.innerHTML = members.map(m => {
+            const init = (m.nickname || 'U').charAt(0).toUpperCase();
+            const icons = `${m.muted ? '🔇' : ''}${m.deafened ? '🎧' : ''}${m.speaking ? '🔊' : ''}`;
+            return `
+                <div class="pip-user-row ${m.speaking ? 'speaking' : ''}">
+                    <div class="pip-avatar" style="background:${escapeHtml(m.color)}">${escapeHtml(init)}</div>
+                    <span class="pip-uname">${escapeHtml(m.nickname)}</span>
+                    <span class="pip-ustatus">${icons}</span>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {}
+}
+
 function removeUserCard(userId) {
     const card = document.getElementById(`card-${userId}`);
     if (card) {
         card.remove();
         updateGridItemCount();
     }
+    updatePipOverlayUI();
 }
 
 function updateUserCardSpeaking(userId, isSpeaking) {
@@ -2849,6 +3162,7 @@ function updateUserCardSpeaking(userId, isSpeaking) {
             stagePill.classList.remove('speaking');
         }
     }
+    updatePipOverlayUI();
 }
 
 function updateUserCardState(userId, isMuted, isDeafened, isSpeaking) {
@@ -2868,6 +3182,7 @@ function updateUserCardState(userId, isMuted, isDeafened, isSpeaking) {
     if (state.sharedBrowser && state.sharedBrowser.active) {
         renderStageSpeakers();
     }
+    updatePipOverlayUI();
 }
 
 function updateGridItemCount() {
@@ -3603,6 +3918,7 @@ function renderVoiceChannelsUI() {
     if (el.currentRoomName) {
         el.currentRoomName.textContent = `${state.roomId} • ${state.channelNames[state.voiceChannel] || ''}`;
     }
+    updatePipOverlayUI();
 }
 
 function switchToLobbyUI() {
@@ -4697,7 +5013,7 @@ function initEventListeners() {
 
     // Çekmece (Drawer) Aç / Kapat Yardımcıları (Aynı anda tek çekmece açık kalsın)
     const closeAllFeatureDrawers = (exceptDrawer = null) => {
-        [el.soundboardDrawer, el.voicefxDrawer, el.statusDrawer].forEach(d => {
+        [el.soundboardDrawer, el.voicefxDrawer, el.statusDrawer, el.gameOverlayDrawer].forEach(d => {
             if (d && d !== exceptDrawer) d.classList.add('hidden');
         });
         if (el.btnToggleSoundboard && exceptDrawer !== el.soundboardDrawer) {
@@ -4706,7 +5022,63 @@ function initEventListeners() {
         if (el.btnToggleVoicefx && exceptDrawer !== el.voicefxDrawer) {
             el.btnToggleVoicefx.classList.remove('active-drawer');
         }
+        if (el.btnToggleGameOverlay && exceptDrawer !== el.gameOverlayDrawer && !document.body.classList.contains('steam-overlay-mode')) {
+            el.btnToggleGameOverlay.classList.remove('active-drawer');
+        }
     };
+
+    // 0. Steam Tarzı Oyun İçi Şeffaf Overlay & PiP Mini Pencere Kontrolleri
+    if (el.btnToggleGameOverlay && el.gameOverlayDrawer) {
+        el.btnToggleGameOverlay.addEventListener('click', () => {
+            const isHidden = el.gameOverlayDrawer.classList.contains('hidden');
+            closeAllFeatureDrawers(el.gameOverlayDrawer);
+            el.gameOverlayDrawer.classList.toggle('hidden', !isHidden);
+            el.btnToggleGameOverlay.classList.toggle('active-drawer', isHidden || document.body.classList.contains('steam-overlay-mode'));
+        });
+    }
+    if (el.btnCloseGameOverlay && el.gameOverlayDrawer) {
+        el.btnCloseGameOverlay.addEventListener('click', () => {
+            el.gameOverlayDrawer.classList.add('hidden');
+            if (el.btnToggleGameOverlay && !document.body.classList.contains('steam-overlay-mode')) {
+                el.btnToggleGameOverlay.classList.remove('active-drawer');
+            }
+        });
+    }
+    if (el.btnNavPipOverlay) {
+        el.btnNavPipOverlay.addEventListener('click', () => {
+            openPipGameOverlay();
+        });
+    }
+    if (el.btnLaunchPipOverlay) {
+        el.btnLaunchPipOverlay.addEventListener('click', () => {
+            if (el.gameOverlayDrawer) el.gameOverlayDrawer.classList.add('hidden');
+            openPipGameOverlay();
+        });
+    }
+    if (el.btnSohPip) {
+        el.btnSohPip.addEventListener('click', () => {
+            openPipGameOverlay();
+        });
+    }
+    if (el.btnActivateSteamHud) {
+        el.btnActivateSteamHud.addEventListener('click', () => {
+            if (el.gameOverlayDrawer) el.gameOverlayDrawer.classList.add('hidden');
+            toggleSteamOverlayMode();
+        });
+    }
+    if (el.btnSohExit) {
+        el.btnSohExit.addEventListener('click', () => {
+            toggleSteamOverlayMode(false);
+        });
+    }
+    if (el.sliderOverlayOpacity) {
+        el.sliderOverlayOpacity.addEventListener('input', (e) => {
+            setOverlayOpacity(e.target.value);
+        });
+    }
+    if (el.btnDownloadOverlayBat) {
+        el.btnDownloadOverlayBat.href = `/api/download-launcher?url=${encodeURIComponent(window.location.origin)}`;
+    }
 
     // 1. Soundboard Çekmecesi ve Ses Efekt Butonları
     if (el.btnToggleSoundboard && el.soundboardDrawer) {
@@ -5413,8 +5785,15 @@ function initEventListeners() {
         });
     }
 
-    // Klavye Kısayolları (M: Mute, D: Deafen, Space: Bas-Konuş)
+    // Klavye Kısayolları (Shift+Tab: Steam Overlay, M: Mute, D: Deafen, Space: Bas-Konuş)
     window.addEventListener('keydown', (e) => {
+        // Shift + Tab: Steam Tarzı Şeffaf Oyun İçi Overlay Aç / Kapat
+        if (e.shiftKey && e.key === 'Tab' && !e.repeat) {
+            e.preventDefault();
+            toggleSteamOverlayMode();
+            return;
+        }
+
         // Eğer bir input alanında yazı yazılıyorsa kısayolları engelle
         const activeTag = document.activeElement.tagName.toLowerCase();
         if (activeTag === 'input' || activeTag === 'textarea') {
@@ -5710,6 +6089,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     initEventListeners();
     checkTunnelStatus();
     initDesktopExperience();
+    if (params.get('overlay') === '1') {
+        toggleSteamOverlayMode(true);
+    }
 
     // Ses aygıtlarını başlangıçta tara ve kayıtlı hoparlör/kulaklığı hazırla
     loadAudioDevices().then(() => {
@@ -5776,7 +6158,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Service Worker Kaydı (PWA & Çevrimdışı Önbellek)
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=20261023_7').then((reg) => {
+        navigator.serviceWorker.register('/sw.js?v=20261023_8').then((reg) => {
             console.log('PWA ServiceWorker devrede:', reg.scope);
         }).catch((err) => {
             console.log('ServiceWorker kayıt detayı:', err);

@@ -5423,6 +5423,222 @@ body[data-theme="crimson"] {
     }
 }
 
+/* ============================================================================
+   STEAM TARZI OYUN İÇİ ŞEFFAF OVERLAY (SHIFT+TAB) VE PiP MİNİ PENCERE STİLLERİ
+   ============================================================================ */
+.btn-nav-overlay-highlight {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(59, 130, 246, 0.22)) !important;
+    border: 1px solid rgba(16, 185, 129, 0.5) !important;
+    color: #a7f3d0 !important;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
+}
+
+.btn-nav-overlay-highlight:hover {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.36), rgba(59, 130, 246, 0.36)) !important;
+    transform: translateY(-1px);
+    color: #ffffff !important;
+}
+
+.game-overlay-drawer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.god-card {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.god-card.highlight {
+    background: linear-gradient(145deg, rgba(88, 101, 242, 0.14), rgba(16, 185, 129, 0.1));
+    border-color: rgba(88, 101, 242, 0.45);
+}
+
+.god-card-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.god-icon {
+    font-size: 24px;
+    line-height: 1;
+    background: rgba(255, 255, 255, 0.07);
+    padding: 8px;
+    border-radius: 10px;
+}
+
+.god-card-head h4 {
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0 0 4px 0;
+}
+
+.god-card-head p {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    margin: 0;
+}
+
+.god-card-head kbd,
+.soh-shortcut-hint kbd {
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 5px;
+    padding: 1px 5px;
+    font-size: 10.5px;
+    font-family: inherit;
+    font-weight: 800;
+    color: #fde047;
+}
+
+.god-btn {
+    width: 100%;
+    justify-content: center;
+    font-size: 12px !important;
+    padding: 9px 12px !important;
+}
+
+/* STEAM OVERLAY HUD BAR */
+.steam-overlay-hud-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 8px 16px 0 16px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgba(12, 16, 28, 0.88), rgba(24, 32, 56, 0.88));
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55), 0 0 20px rgba(56, 189, 248, 0.18);
+    backdrop-filter: blur(16px);
+}
+
+.soh-left,
+.soh-center,
+.soh-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.soh-badge {
+    background: linear-gradient(135deg, #0284c7, #2563eb);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+    padding: 4px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.4px;
+}
+
+.soh-clock {
+    font-size: 13px;
+    font-weight: 800;
+    color: #e2e8f0;
+    font-variant-numeric: tabular-nums;
+}
+
+.soh-shortcut-hint {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+}
+
+.soh-center label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #cbd5e1;
+}
+
+.soh-opacity-slider {
+    width: 110px;
+    accent-color: #38bdf8;
+    cursor: pointer;
+}
+
+.soh-opacity-val {
+    font-size: 12px;
+    font-weight: 800;
+    color: #38bdf8;
+    min-width: 36px;
+}
+
+.btn-soh-action {
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 11.5px;
+    font-weight: 800;
+    padding: 6px 12px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.btn-soh-action.highlight {
+    background: rgba(16, 185, 129, 0.22);
+    border-color: rgba(16, 185, 129, 0.55);
+    color: #a7f3d0;
+}
+
+.btn-soh-action.danger {
+    background: rgba(244, 63, 94, 0.22);
+    border-color: rgba(244, 63, 94, 0.55);
+    color: #fecdd3;
+}
+
+.btn-soh-action:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.15);
+}
+
+/* STEAM OVERLAY MODU AKTİFKEN ŞEFFAF CAM GÖRÜNÜMÜ */
+body.steam-overlay-mode {
+    --overlay-alpha: 0.82;
+    background: rgba(6, 9, 16, calc(var(--overlay-alpha) * 0.65)) !important;
+    opacity: var(--overlay-alpha);
+    transition: opacity 0.15s ease, background 0.2s ease;
+}
+
+body.steam-overlay-mode .screen-view,
+body.steam-overlay-mode .room-main,
+body.steam-overlay-mode .voice-section {
+    background: transparent !important;
+}
+
+body.steam-overlay-mode .room-navbar {
+    background: rgba(8, 11, 20, 0.55) !important;
+    backdrop-filter: blur(10px);
+}
+
+body.steam-overlay-mode .channels-sidebar {
+    width: 195px;
+    background: rgba(8, 11, 20, 0.45) !important;
+    backdrop-filter: blur(10px);
+}
+
+body.steam-overlay-mode .user-card {
+    background: rgba(12, 16, 28, 0.58) !important;
+    border-color: rgba(56, 189, 248, 0.22) !important;
+    backdrop-filter: blur(12px);
+}
+
+body.steam-overlay-mode .user-card.speaking {
+    border-color: #10b981 !important;
+    box-shadow: 0 0 24px rgba(16, 185, 129, 0.45) !important;
+}
+
+
 
 
 
