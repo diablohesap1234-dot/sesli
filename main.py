@@ -1114,7 +1114,8 @@ async def websocket_endpoint(
         "is_server_muted": False,
         "is_muted": False,
         "is_deafened": False,
-        "is_speaking": False
+        "is_speaking": False,
+        "custom_status": ""
     }
 
     logger.info(f"User joined: {nickname} ({client_id}, role={role}) -> Room: {room_id} [Channel: {voice_channel}] (Total: {len(room['participants'])})")
@@ -1135,7 +1136,8 @@ async def websocket_endpoint(
             "is_server_muted": u.get("is_server_muted", False),
             "is_muted": u["is_muted"],
             "is_deafened": u["is_deafened"],
-            "is_speaking": u["is_speaking"]
+            "is_speaking": u["is_speaking"],
+            "custom_status": u.get("custom_status", "")
         }
         for cid, u in room["participants"].items()
         if cid != client_id
@@ -1179,7 +1181,8 @@ async def websocket_endpoint(
             "is_server_muted": False,
             "is_muted": False,
             "is_deafened": False,
-            "is_speaking": False
+            "is_speaking": False,
+            "custom_status": ""
         },
         exclude_client_id=client_id
     )
@@ -1657,6 +1660,69 @@ async def websocket_endpoint(
                         {
                             "type": "browser-control-denied",
                             "from_name": nickname
+                        }
+                    )
+
+            elif msg_type == "user-status-change":
+                status_text = message.get("status", "").strip()[:45]
+                user_record = room["participants"].get(client_id)
+                if user_record:
+                    user_record["custom_status"] = status_text
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "user-status-updated",
+                            "client_id": client_id,
+                            "nickname": nickname,
+                            "status": status_text
+                        }
+                    )
+
+            elif msg_type == "soundboard-play":
+                sound_id = message.get("sound_id", "").strip()[:30]
+                sound_name = message.get("sound_name", "Ses Efekti").strip()[:40]
+                sound_emoji = message.get("sound_emoji", "🎹").strip()[:8]
+                user_record = room["participants"].get(client_id)
+                if user_record and sound_id and not user_record.get("is_server_muted"):
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "soundboard-played",
+                            "client_id": client_id,
+                            "nickname": nickname,
+                            "voice_channel": user_record.get("voice_channel", "channel-1"),
+                            "sound_id": sound_id,
+                            "sound_name": sound_name,
+                            "sound_emoji": sound_emoji
+                        }
+                    )
+
+            elif msg_type == "live-reaction":
+                emoji = message.get("emoji", "🔥").strip()[:8]
+                if emoji:
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "live-reaction",
+                            "client_id": client_id,
+                            "nickname": nickname,
+                            "avatar_color": avatar_color,
+                            "emoji": emoji
+                        }
+                    )
+
+            elif msg_type == "nudge-user":
+                target_id = message.get("target_id")
+                note = message.get("note", "Hey, burada mısın? 👋").strip()[:80]
+                if target_id and room_id in rooms and target_id in room["participants"]:
+                    await manager.send_to_peer(
+                        room_id,
+                        target_id,
+                        {
+                            "type": "user-nudged",
+                            "from_id": client_id,
+                            "from_name": nickname,
+                            "note": note
                         }
                     )
 

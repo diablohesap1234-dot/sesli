@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Agalar">
     <link rel="apple-touch-icon" href="/icon-192.png">
-    <link rel="stylesheet" href="/static/style.css?v=20261023_5">
+    <link rel="stylesheet" href="/static/style.css?v=20261023_7">
 </head>
 <body>
     <!-- MASAÜSTÜ SİNEMATİK AÇILIŞ ANİMASYONU (SPLASH SCREEN) -->
@@ -300,6 +300,10 @@
                         <span class="ping-dot"></span>
                         <span id="ping-text">-- ms</span>
                     </div>
+                    <button type="button" id="btn-theme-cycle" class="btn-nav-feature" title="Arayüz Temasını Değiştir (Gece / Siber Mor / Zümrüt / Kızıl)">
+                        <span id="theme-icon">🌌</span>
+                        <span id="theme-label">Tema: Gece</span>
+                    </button>
                 </div>
 
                 <div class="room-nav-right">
@@ -507,6 +511,144 @@
                             <span class="stage-dock-title">🎙️ Sesli Sohbet:</span>
                             <div class="stage-dock-speakers" id="stage-dock-speakers">
                                 <!-- Dinamik konuşmacı minyatür kartları buraya gelecek -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MODERN SES ODASI KOMUT & ETKİLEŞİM ÇUBUĞU (RAKİPLERDEN ÖNDE ÖZELLİKLER) -->
+                    <div class="voice-command-bar" id="voice-command-bar">
+                        <div class="vcb-left">
+                            <div class="vcb-channel-pill">
+                                <span class="vcb-eq-waves" id="vcb-eq-waves">
+                                    <i></i><i></i><i></i>
+                                </span>
+                                <span id="active-channel-header-title" class="vcb-channel-name">Ses Odası 1</span>
+                                <span id="active-channel-user-count" class="vcb-channel-count">1 Aktif</span>
+                            </div>
+                        </div>
+
+                        <div class="vcb-center-reactions" title="Odaya Canlı Emoji Tepkisi Gönder">
+                            <button type="button" class="btn-quick-react" data-emoji="🔥" title="Ateş">🔥</button>
+                            <button type="button" class="btn-quick-react" data-emoji="😂" title="Kahkaha">😂</button>
+                            <button type="button" class="btn-quick-react" data-emoji="❤️" title="Kalp">❤️</button>
+                            <button type="button" class="btn-quick-react" data-emoji="👏" title="Alkış">👏</button>
+                            <button type="button" class="btn-quick-react" data-emoji="👑" title="Kral">👑</button>
+                            <button type="button" class="btn-quick-react" data-emoji="💀" title="Bruh">💀</button>
+                            <button type="button" class="btn-quick-react" data-emoji="🚀" title="Roket">🚀</button>
+                        </div>
+
+                        <div class="vcb-right-tools">
+                            <button type="button" id="btn-toggle-soundboard" class="btn-vcb-tool" title="Ortak Ses Efekt Paneli (Soundboard)">
+                                <span>🎹</span>
+                                <span class="vcb-tool-text">Ses Efektleri</span>
+                            </button>
+                            <button type="button" id="btn-toggle-voicefx" class="btn-vcb-tool" title="Canlı Ses Değiştirici & Mikrofon Güçlendirici">
+                                <span>🎭</span>
+                                <span class="vcb-tool-text" id="voicefx-btn-label">Ses Değiştirici</span>
+                            </button>
+                            <button type="button" id="btn-toggle-status-drawer" class="btn-vcb-tool" title="Ne Oynadığını / Durumunu Belirle">
+                                <span>🎮</span>
+                                <span class="vcb-tool-text" id="status-btn-label">Durum Belirle</span>
+                            </button>
+                            <button type="button" id="btn-vcb-screen-share" class="btn-vcb-tool highlight" title="Ekran veya Dizi Yayını Aç">
+                                <span>🖥️</span>
+                                <span class="vcb-tool-text">Ekran Paylaş</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 1. SOUNDBOARD (ORTAK SES EFEKT PANELİ) ÇEKMECESİ -->
+                    <div id="soundboard-drawer" class="feature-drawer hidden">
+                        <div class="feature-drawer-header">
+                            <div class="fd-title">
+                                <span>🎹 Canlı Soundboard (Ortak Ses Efektleri)</span>
+                                <span class="fd-subtitle">Tıkladığınız efekt odadaki tüm arkadaşlarınıza anında çalınır</span>
+                            </div>
+                            <button type="button" id="btn-close-soundboard" class="btn-fd-close">✕</button>
+                        </div>
+                        <div class="soundboard-grid">
+                            <button type="button" class="sb-pad" data-sound="airhorn" data-name="Havalı Korna" data-emoji="📢">
+                                <span class="sb-emoji">📢</span>
+                                <span class="sb-label">Havalı Korna</span>
+                            </button>
+                            <button type="button" class="sb-pad" data-sound="rimshot" data-name="Ba-Dum-Tss" data-emoji="🥁">
+                                <span class="sb-emoji">🥁</span>
+                                <span class="sb-label">Ba-Dum-Tss</span>
+                            </button>
+                            <button type="button" class="sb-pad" data-sound="applause" data-name="Alkış & Bravo" data-emoji="👏">
+                                <span class="sb-emoji">👏</span>
+                                <span class="sb-label">Alkış & Bravo</span>
+                            </button>
+                            <button type="button" class="sb-pad" data-sound="trombone" data-name="Fail Trombon" data-emoji="🎺">
+                                <span class="sb-emoji">🎺</span>
+                                <span class="sb-label">Fail Trombon</span>
+                            </button>
+                            <button type="button" class="sb-pad" data-sound="alarm" data-name="Baskın Alarmı" data-emoji="🚨">
+                                <span class="sb-emoji">🚨</span>
+                                <span class="sb-label">Baskın Alarmı</span>
+                            </button>
+                            <button type="button" class="sb-pad" data-sound="coin" data-name="GG / Level Up" data-emoji="🪙">
+                                <span class="sb-emoji">🪙</span>
+                                <span class="sb-label">GG / Level Up</span>
+                            </button>
+                            <button type="button" class="sb-pad" data-sound="gameover" data-name="Elendi / Bruh" data-emoji="💀">
+                                <span class="sb-emoji">💀</span>
+                                <span class="sb-label">Elendi / Bruh</span>
+                            </button>
+                            <button type="button" class="sb-pad" data-sound="dingdong" data-name="Dikkat Zili" data-emoji="🔔">
+                                <span class="sb-emoji">🔔</span>
+                                <span class="sb-label">Dikkat Zili</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 2. CANLI SES DEĞİŞTİRİCİ & STÜDYO EQ ÇEKMECESİ -->
+                    <div id="voicefx-drawer" class="feature-drawer hidden">
+                        <div class="feature-drawer-header">
+                            <div class="fd-title">
+                                <span>🎭 Gerçek Zamanlı Ses Değiştirici & Stüdyo Mikrofon Güçlendirici</span>
+                                <span class="fd-subtitle">Mikrofon sesinizi anında filtreler ve güçlendirir</span>
+                            </div>
+                            <button type="button" id="btn-close-voicefx" class="btn-fd-close">✕</button>
+                        </div>
+                        <div class="voicefx-body">
+                            <div class="voicefx-presets">
+                                <button type="button" class="vfx-chip active" data-vfx="normal">🎙️ Doğal Ses</button>
+                                <button type="button" class="vfx-chip" data-vfx="studio">📻 Stüdyo / Podcast</button>
+                                <button type="button" class="vfx-chip" data-vfx="robot">🤖 Robot / Cyborg</button>
+                                <button type="button" class="vfx-chip" data-vfx="deep">👹 Kalın / Derin Ses</button>
+                                <button type="button" class="vfx-chip" data-vfx="radio">📞 Askeri Telsiz</button>
+                            </div>
+                            <div class="voicefx-boost-row">
+                                <label for="slider-mic-boost">🔊 Mikrofon Ses Güçlendirici (Gain Boost):</label>
+                                <input type="range" id="slider-mic-boost" min="100" max="300" step="10" value="100" class="form-range">
+                                <span id="mic-boost-val" class="vfx-boost-badge">100%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. CANLI OYUN & AKTİVİTE DURUMU ÇEKMECESİ -->
+                    <div id="status-drawer" class="feature-drawer hidden">
+                        <div class="feature-drawer-header">
+                            <div class="fd-title">
+                                <span>🎮 Canlı Aktivite & Oyun Durumu</span>
+                                <span class="fd-subtitle">Kartınızda ve sol kanal listesinde ne yaptığınızı gösterin</span>
+                            </div>
+                            <button type="button" id="btn-close-status-drawer" class="btn-fd-close">✕</button>
+                        </div>
+                        <div class="status-drawer-body">
+                            <div class="status-presets-row">
+                                <button type="button" class="status-chip" data-status="🎮 Valorant Oynuyor">🎮 Valorant</button>
+                                <button type="button" class="status-chip" data-status="🎮 CS2 Rekabetçi">🎮 CS2</button>
+                                <button type="button" class="status-chip" data-status="🎮 League of Legends">🎮 LoL</button>
+                                <button type="button" class="status-chip" data-status="🍿 Dizi / Film İzliyor">🍿 Dizi İzliyor</button>
+                                <button type="button" class="status-chip" data-status="🎧 Müzik Dinliyor">🎧 Müzik Dinliyor</button>
+                                <button type="button" class="status-chip" data-status="☕ AFK / Molada">☕ AFK / Molada</button>
+                                <button type="button" class="status-chip danger" data-status="">🗑️ Temizle</button>
+                            </div>
+                            <div class="status-custom-row">
+                                <input type="text" id="custom-status-input" class="form-input-text" maxlength="40" placeholder="Özel durum yaz (Örn: 🔥 Dereceli maçtayım)...">
+                                <button type="button" id="btn-save-custom-status" class="btn-primary">Uygula</button>
                             </div>
                         </div>
                     </div>
@@ -990,9 +1132,13 @@
                 </div>
             </div>
         </div>
+
+        <!-- CANLI EMOJİ YAĞMURU & BİLDİRİM KATMANLARI -->
+        <div id="floating-reactions-layer" class="floating-reactions-layer"></div>
+        <div id="toast-container" class="toast-container"></div>
     </div>
 
     <!-- SESLERİ OYNATMAK İÇİN SENTEZLEME YAZILIMI APP.JS İÇİNDE BULUNMAKTADIR -->
-    <script src="/static/app.js?v=20261023_5"></script>
+    <script src="/static/app.js?v=20261023_7"></script>
 </body>
 </html>

@@ -85,7 +85,15 @@ const state = {
     },
     isServerMuted: false,
     activeModTargetId: null,
-    isInRoom: false
+    isInRoom: false,
+
+    // Yeni Nesil Tema, Ses Efektleri (VoiceFX), Soundboard ve Durum State
+    theme: localStorage.getItem('agalar_theme') || 'default',
+    customStatus: localStorage.getItem('agalar_custom_status') || '',
+    voiceFxMode: 'normal', // 'normal', 'studio', 'robot', 'deep', 'radio'
+    micBoostPercent: 100,  // 100 - 300
+    rawMicStream: null,
+    fxCleanup: null
 };
 
 // WebRTC STUN Configuration
@@ -346,7 +354,32 @@ const el = {
     chkPermKick: document.getElementById('chk-perm-kick'),
     chkPermMove: document.getElementById('chk-perm-move'),
     chkPermManageRoles: document.getElementById('chk-perm-manage-roles'),
-    btnModSavePermissions: document.getElementById('btn-mod-save-permissions')
+    btnModSavePermissions: document.getElementById('btn-mod-save-permissions'),
+
+    // Yeni Nesil Tema, Komut Barı, Soundboard, VoiceFX, Durum ve Bildirim Elemanları
+    btnThemeCycle: document.getElementById('btn-theme-cycle'),
+    themeIcon: document.getElementById('theme-icon'),
+    themeLabel: document.getElementById('theme-label'),
+    activeChannelHeaderTitle: document.getElementById('active-channel-header-title'),
+    activeChannelUserCount: document.getElementById('active-channel-user-count'),
+    btnToggleSoundboard: document.getElementById('btn-toggle-soundboard'),
+    btnToggleVoicefx: document.getElementById('btn-toggle-voicefx'),
+    voicefxBtnLabel: document.getElementById('voicefx-btn-label'),
+    btnToggleStatusDrawer: document.getElementById('btn-toggle-status-drawer'),
+    statusBtnLabel: document.getElementById('status-btn-label'),
+    btnVcbScreenShare: document.getElementById('btn-vcb-screen-share'),
+    soundboardDrawer: document.getElementById('soundboard-drawer'),
+    btnCloseSoundboard: document.getElementById('btn-close-soundboard'),
+    voicefxDrawer: document.getElementById('voicefx-drawer'),
+    btnCloseVoicefx: document.getElementById('btn-close-voicefx'),
+    sliderMicBoost: document.getElementById('slider-mic-boost'),
+    micBoostVal: document.getElementById('mic-boost-val'),
+    statusDrawer: document.getElementById('status-drawer'),
+    btnCloseStatusDrawer: document.getElementById('btn-close-status-drawer'),
+    customStatusInput: document.getElementById('custom-status-input'),
+    btnSaveCustomStatus: document.getElementById('btn-save-custom-status'),
+    floatingReactionsLayer: document.getElementById('floating-reactions-layer'),
+    toastContainer: document.getElementById('toast-container')
 };
 
 // ============================================================================
@@ -463,6 +496,195 @@ class SoundEffects {
             this.playTone([350, 250], 0.08);
         } else {
             this.playTone([300, 450], 0.08);
+        }
+    }
+
+    static playNudgeAlert() {
+        if (state.isDeafened) return;
+        this.playTone([880, 1174.66, 880, 1318.51], 0.14, 'triangle');
+    }
+
+    static playSoundboard(soundId) {
+        if (state.isDeafened) return;
+        try {
+            this.init();
+            if (!state.audioCtx) return;
+            if (state.audioCtx.state === 'suspended') {
+                state.audioCtx.resume();
+            }
+            const ctx = state.audioCtx;
+            const now = ctx.currentTime;
+
+            if (soundId === 'airhorn') {
+                // Klasik MLG Airhorn (Üçlü re-trigger sawtooth korna)
+                const bursts = [0, 0.16, 0.32];
+                const durations = [0.13, 0.13, 0.55];
+                const freqs = [380, 475, 570, 760];
+                bursts.forEach((offset, bIdx) => {
+                    const dur = durations[bIdx];
+                    freqs.forEach((f) => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sawtooth';
+                        osc.frequency.setValueAtTime(f * 0.96, now + offset);
+                        osc.frequency.linearRampToValueAtTime(f, now + offset + 0.03);
+                        gain.gain.setValueAtTime(0.06, now + offset);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + dur);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(now + offset);
+                        osc.stop(now + offset + dur);
+                    });
+                });
+            } else if (soundId === 'rimshot') {
+                // Ba-Dum-Tss!
+                const playDrum = (startOffset, startFreq, endFreq, dur) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(startFreq, now + startOffset);
+                    osc.frequency.exponentialRampToValueAtTime(endFreq, now + startOffset + dur);
+                    gain.gain.setValueAtTime(0.28, now + startOffset);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + startOffset + dur);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + startOffset);
+                    osc.stop(now + startOffset + dur);
+                };
+                playDrum(0, 180, 65, 0.16);
+                playDrum(0.18, 140, 50, 0.20);
+
+                // Tss (Hi-hat / Cymbal white noise)
+                const bufferSize = ctx.sampleRate * 0.55;
+                const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+                const whiteNoise = ctx.createBufferSource();
+                whiteNoise.buffer = noiseBuffer;
+                const bandpass = ctx.createBiquadFilter();
+                bandpass.type = 'highpass';
+                bandpass.frequency.setValueAtTime(5500, now + 0.38);
+                const noiseGain = ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.18, now + 0.38);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.90);
+                whiteNoise.connect(bandpass);
+                bandpass.connect(noiseGain);
+                noiseGain.connect(ctx.destination);
+                whiteNoise.start(now + 0.38);
+                whiteNoise.stop(now + 0.92);
+            } else if (soundId === 'applause') {
+                // Alkış Тefekti (Çoklu filtrelenmiş gürültü vuruşları)
+                for (let i = 0; i < 16; i++) {
+                    const startOff = i * 0.055 + (Math.random() * 0.02);
+                    const dur = 0.07 + Math.random() * 0.04;
+                    const bufLen = Math.floor(ctx.sampleRate * dur);
+                    const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+                    const data = buf.getChannelData(0);
+                    for (let j = 0; j < bufLen; j++) {
+                        data[j] = (Math.random() * 2 - 1) * Math.exp(-j / (bufLen * 0.4));
+                    }
+                    const src = ctx.createBufferSource();
+                    src.buffer = buf;
+                    const filter = ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.value = 1100 + Math.random() * 900;
+                    const gain = ctx.createGain();
+                    gain.gain.value = 0.14;
+                    src.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(ctx.destination);
+                    src.start(now + startOff);
+                }
+            } else if (soundId === 'trombone') {
+                // Sad Trombone (Womp Womp Womp Wooooomp)
+                const notes = [
+                    { f: 293.66, start: 0, dur: 0.25 },
+                    { f: 277.18, start: 0.27, dur: 0.25 },
+                    { f: 261.63, start: 0.54, dur: 0.25 },
+                    { f: 246.94, start: 0.81, dur: 0.65, slideTo: 210 }
+                ];
+                notes.forEach(n => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(n.f, now + n.start);
+                    if (n.slideTo) {
+                        osc.frequency.linearRampToValueAtTime(n.slideTo, now + n.start + n.dur);
+                    }
+                    gain.gain.setValueAtTime(0.11, now + n.start);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + n.start + n.dur);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + n.start);
+                    osc.stop(now + n.start + n.dur);
+                });
+            } else if (soundId === 'alarm') {
+                // Kırmızı Alarm Siren
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(450, now);
+                osc.frequency.linearRampToValueAtTime(880, now + 0.25);
+                osc.frequency.linearRampToValueAtTime(450, now + 0.50);
+                osc.frequency.linearRampToValueAtTime(880, now + 0.75);
+                osc.frequency.linearRampToValueAtTime(450, now + 1.0);
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.05);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 1.05);
+            } else if (soundId === 'coin') {
+                // 8-Bit Mario / Arcade Coin (B5 -> E6)
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(987.77, now);
+                osc.frequency.setValueAtTime(1318.51, now + 0.08);
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.45);
+            } else if (soundId === 'gameover') {
+                // Retro Game Over
+                const notes = [523.25, 493.88, 440.00, 392.00, 349.23, 329.63, 261.63];
+                notes.forEach((f, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'square';
+                    const st = now + idx * 0.11;
+                    const dur = idx === notes.length - 1 ? 0.35 : 0.10;
+                    osc.frequency.setValueAtTime(f, st);
+                    gain.gain.setValueAtTime(0.09, st);
+                    gain.gain.exponentialRampToValueAtTime(0.001, st + dur);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(st);
+                    osc.stop(st + dur);
+                });
+            } else if (soundId === 'dingdong') {
+                // Kapı Zili (E5 -> C5)
+                const playChime = (freq, startOff, dur) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + startOff);
+                    gain.gain.setValueAtTime(0.20, now + startOff);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + startOff + dur);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + startOff);
+                    osc.stop(now + startOff + dur);
+                };
+                playChime(659.25, 0, 0.45);
+                playChime(523.25, 0.32, 0.75);
+            }
+        } catch (e) {
+            console.warn("Soundboard play error:", e);
         }
     }
 }
@@ -847,65 +1069,176 @@ function stopSettingsMicPreview() {
 }
 
 // ============================================================================
-// 3. YEREL SES YÖNETİMİ & VAD (VOICE ACTIVITY DETECTION)
+// 3. YEREL SES YÖNETİMİ, VOICE FX (SES DEĞİŞTİRİCİ) & VAD
 // ============================================================================
-async function setupLocalAudioStream(deviceId = null) {
-    if (state.localStream) {
-        state.localStream.getTracks().forEach(t => t.stop());
+function makeDistortionCurve(amount = 40) {
+    const k = typeof amount === 'number' ? amount : 40;
+    const nSamples = 44100;
+    const curve = new Float32Array(nSamples);
+    const deg = Math.PI / 180;
+    for (let i = 0; i < nSamples; ++i) {
+        const x = (i * 2) / nSamples - 1;
+        curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+    }
+    return curve;
+}
+
+function rebuildVoiceFxStream() {
+    if (!state.rawMicStream) return;
+
+    if (state.fxCleanup) {
+        try { state.fxCleanup(); } catch (e) {}
+        state.fxCleanup = null;
     }
 
-    const targetDeviceId = deviceId || state.selectedAudioInput || null;
-
-    const audioConstraints = {
-        echoCancellation: el.chkEcho ? el.chkEcho.checked : true,
-        noiseSuppression: el.chkNoise ? el.chkNoise.checked : true,
-        autoGainControl: true
-    };
-    if (targetDeviceId) {
-        audioConstraints.deviceId = { ideal: targetDeviceId };
-    }
-
-    try {
-        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-    } catch (err) {
-        console.warn("Seçili mikrofonla açılamadı, varsayılan deneniyor:", err);
-        delete audioConstraints.deviceId;
-        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-    }
-
-    // Aktif cihaz bilgisini state ve localStorage'a kaydet
-    const audioTrack = state.localStream.getAudioTracks()[0];
-    if (audioTrack) {
-        const trackSettings = audioTrack.getSettings ? audioTrack.getSettings() : {};
-        if (trackSettings.deviceId && !targetDeviceId) {
-            state.selectedAudioInput = trackSettings.deviceId;
-            try { localStorage.setItem('agalar_selected_mic', trackSettings.deviceId); } catch(e) {}
-        }
-    }
-
-    // Web Audio Analyser
     SoundEffects.init();
     if (state.audioCtx && state.audioCtx.state === 'suspended') {
         state.audioCtx.resume().catch(() => {});
     }
-    const source = state.audioCtx.createMediaStreamSource(state.localStream);
-    state.analyser = state.audioCtx.createAnalyser();
-    state.analyser.fftSize = 512;
-    source.connect(state.analyser);
 
-    // Mute durumunu koru
-    if (audioTrack) {
-        audioTrack.enabled = !state.isMuted && !state.isDeafened;
-        if (state.inputMode === 'ptt' && !state.isPttPressed) {
-            audioTrack.enabled = false;
+    const ctx = state.audioCtx;
+    const mode = state.voiceFxMode || 'normal';
+    const boost = (state.micBoostPercent || 100) / 100;
+
+    let finalStream = state.rawMicStream;
+
+    if (ctx && (mode !== 'normal' || boost !== 1.0)) {
+        try {
+            const rawSource = ctx.createMediaStreamSource(state.rawMicStream);
+            const boostGain = ctx.createGain();
+            boostGain.gain.value = boost;
+            const dest = ctx.createMediaStreamDestination();
+            const cleanupNodes = [rawSource, boostGain];
+            const cleanupOscs = [];
+
+            let lastNode = rawSource;
+
+            if (mode === 'studio') {
+                const hp = ctx.createBiquadFilter();
+                hp.type = 'highpass';
+                hp.frequency.value = 85;
+
+                const lowWarmth = ctx.createBiquadFilter();
+                lowWarmth.type = 'lowshelf';
+                lowWarmth.frequency.value = 180;
+                lowWarmth.gain.value = 5.5;
+
+                const highPresence = ctx.createBiquadFilter();
+                highPresence.type = 'highshelf';
+                highPresence.frequency.value = 3800;
+                highPresence.gain.value = 4.5;
+
+                const comp = ctx.createDynamicsCompressor();
+                comp.threshold.value = -22;
+                comp.knee.value = 12;
+                comp.ratio.value = 4;
+
+                lastNode.connect(hp);
+                hp.connect(lowWarmth);
+                lowWarmth.connect(highPresence);
+                highPresence.connect(comp);
+                lastNode = comp;
+                cleanupNodes.push(hp, lowWarmth, highPresence, comp);
+            } else if (mode === 'robot') {
+                // Ring Modulator Robotik Ses
+                const ringGain = ctx.createGain();
+                ringGain.gain.value = 0;
+
+                const modOsc = ctx.createOscillator();
+                modOsc.type = 'sawtooth';
+                modOsc.frequency.value = 55;
+                modOsc.connect(ringGain.gain);
+                modOsc.start();
+
+                const bp = ctx.createBiquadFilter();
+                bp.type = 'bandpass';
+                bp.frequency.value = 950;
+                bp.Q.value = 1.2;
+
+                lastNode.connect(ringGain);
+                ringGain.connect(bp);
+                lastNode = bp;
+                cleanupNodes.push(ringGain, bp);
+                cleanupOscs.push(modOsc);
+            } else if (mode === 'deep') {
+                // Kalın / Derin Sinematik Ses
+                const subBoost = ctx.createBiquadFilter();
+                subBoost.type = 'lowshelf';
+                subBoost.frequency.value = 160;
+                subBoost.gain.value = 14;
+
+                const lp = ctx.createBiquadFilter();
+                lp.type = 'lowpass';
+                lp.frequency.value = 1450;
+
+                const shaper = ctx.createWaveShaper();
+                shaper.curve = makeDistortionCurve(18);
+                shaper.oversample = '2x';
+
+                lastNode.connect(subBoost);
+                subBoost.connect(shaper);
+                shaper.connect(lp);
+                lastNode = lp;
+                cleanupNodes.push(subBoost, lp, shaper);
+            } else if (mode === 'radio') {
+                // Telsiz / Walkie-Talkie Efekti
+                const hp = ctx.createBiquadFilter();
+                hp.type = 'highpass';
+                hp.frequency.value = 520;
+
+                const lp = ctx.createBiquadFilter();
+                lp.type = 'lowpass';
+                lp.frequency.value = 2400;
+
+                const shaper = ctx.createWaveShaper();
+                shaper.curve = makeDistortionCurve(65);
+                shaper.oversample = '2x';
+
+                lastNode.connect(hp);
+                hp.connect(lp);
+                lp.connect(shaper);
+                lastNode = shaper;
+                cleanupNodes.push(hp, lp, shaper);
+            }
+
+            lastNode.connect(boostGain);
+            boostGain.connect(dest);
+            finalStream = dest.stream;
+
+            state.fxCleanup = () => {
+                cleanupOscs.forEach(o => { try { o.stop(); o.disconnect(); } catch(e) {} });
+                cleanupNodes.forEach(n => { try { n.disconnect(); } catch(e) {} });
+            };
+        } catch (fxErr) {
+            console.warn("VoiceFX oluşturulamadı, ham mikrofon kullanılıyor:", fxErr);
+            finalStream = state.rawMicStream;
         }
     }
 
-    // Mevcut bağlantılardaki trackleri güncelle (re-negotiation)
+    state.localStream = finalStream;
+
+    // Web Audio Analyser (Konuşma algılama ve seviye çubuğu için)
+    if (ctx) {
+        try {
+            const analyserSource = ctx.createMediaStreamSource(state.localStream);
+            state.analyser = ctx.createAnalyser();
+            state.analyser.fftSize = 512;
+            analyserSource.connect(state.analyser);
+        } catch (e) {}
+    }
+
+    const audioTrack = state.localStream.getAudioTracks()[0];
+    const rawTrack = state.rawMicStream.getAudioTracks()[0];
+    const shouldEnable = !state.isMuted && !state.isDeafened && !(state.inputMode === 'ptt' && !state.isPttPressed);
+
+    if (rawTrack) rawTrack.enabled = shouldEnable;
+    if (audioTrack) audioTrack.enabled = shouldEnable;
+
+    // Mevcut WebRTC bağlantılarındaki ses track'lerini kesintisiz değiştir
     Object.entries(state.peers).forEach(async ([peerId, peer]) => {
         const sender = peer.pc.getSenders().find(s => s.track && s.track.kind === 'audio');
         if (sender && audioTrack) {
-            sender.replaceTrack(audioTrack);
+            sender.replaceTrack(audioTrack).catch(e => console.warn("replaceTrack err:", e));
         } else if (audioTrack) {
             try {
                 peer.pc.addTrack(audioTrack, state.localStream);
@@ -926,7 +1259,88 @@ async function setupLocalAudioStream(deviceId = null) {
             }
         }
     });
+}
 
+function setVoiceFxMode(mode) {
+    state.voiceFxMode = mode || 'normal';
+    const fxNames = {
+        normal: 'Normal',
+        studio: 'Stüdyo',
+        robot: 'Robotik',
+        deep: 'Derin Ses',
+        radio: 'Telsiz'
+    };
+    if (el.voicefxBtnLabel) {
+        el.voicefxBtnLabel.textContent = mode === 'normal' ? 'Ses Efekti' : `FX: ${fxNames[mode] || mode}`;
+    }
+    if (el.btnToggleVoicefx) {
+        el.btnToggleVoicefx.classList.toggle('active-fx', mode !== 'normal' || state.micBoostPercent > 100);
+    }
+    document.querySelectorAll('.vfx-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-vfx') === state.voiceFxMode);
+    });
+    if (state.rawMicStream) {
+        rebuildVoiceFxStream();
+    }
+}
+
+function setMicBoost(percent) {
+    state.micBoostPercent = Math.max(100, Math.min(300, parseInt(percent) || 100));
+    if (el.micBoostVal) {
+        el.micBoostVal.textContent = `${state.micBoostPercent}%`;
+    }
+    if (el.btnToggleVoicefx) {
+        el.btnToggleVoicefx.classList.toggle('active-fx', state.voiceFxMode !== 'normal' || state.micBoostPercent > 100);
+    }
+    if (state.rawMicStream) {
+        rebuildVoiceFxStream();
+    }
+}
+
+async function setupLocalAudioStream(deviceId = null) {
+    if (state.fxCleanup) {
+        try { state.fxCleanup(); } catch (e) {}
+        state.fxCleanup = null;
+    }
+    if (state.rawMicStream) {
+        state.rawMicStream.getTracks().forEach(t => t.stop());
+        state.rawMicStream = null;
+    }
+    if (state.localStream) {
+        state.localStream.getTracks().forEach(t => t.stop());
+        state.localStream = null;
+    }
+
+    const targetDeviceId = deviceId || state.selectedAudioInput || null;
+
+    const audioConstraints = {
+        echoCancellation: el.chkEcho ? el.chkEcho.checked : true,
+        noiseSuppression: el.chkNoise ? el.chkNoise.checked : true,
+        autoGainControl: true
+    };
+    if (targetDeviceId) {
+        audioConstraints.deviceId = { ideal: targetDeviceId };
+    }
+
+    try {
+        state.rawMicStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    } catch (err) {
+        console.warn("Seçili mikrofonla açılamadı, varsayılan deneniyor:", err);
+        delete audioConstraints.deviceId;
+        state.rawMicStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    }
+
+    // Aktif cihaz bilgisini state ve localStorage'a kaydet
+    const rawTrack = state.rawMicStream.getAudioTracks()[0];
+    if (rawTrack) {
+        const trackSettings = rawTrack.getSettings ? rawTrack.getSettings() : {};
+        if (trackSettings.deviceId && !targetDeviceId) {
+            state.selectedAudioInput = trackSettings.deviceId;
+            try { localStorage.setItem('agalar_selected_mic', trackSettings.deviceId); } catch(e) {}
+        }
+    }
+
+    rebuildVoiceFxStream();
     startVoiceActivityDetection();
 }
 
@@ -1248,6 +1662,14 @@ function handleServerMessage(msg) {
             if (msg.shared_browser) {
                 handleBrowserStateUpdate(msg.shared_browser);
             }
+
+            // Kayıtlı aktivite/oyun durumumuz varsa odaya girince herkese senkronize et
+            if (state.customStatus && state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({
+                    type: 'user-status-change',
+                    custom_status: state.customStatus
+                }));
+            }
             break;
 
         case 'user-joined':
@@ -1266,7 +1688,8 @@ function handleServerMessage(msg) {
                 can_kick: Boolean(msg.can_kick),
                 can_move: Boolean(msg.can_move),
                 can_manage_roles: Boolean(msg.can_manage_roles),
-                is_server_muted: Boolean(msg.is_server_muted)
+                is_server_muted: Boolean(msg.is_server_muted),
+                custom_status: msg.custom_status || ''
             };
             updateOnlineCount(Object.keys(state.allUsers).length + 1);
             renderVoiceChannelsUI();
@@ -1505,6 +1928,42 @@ function handleServerMessage(msg) {
             }
             syncVoiceGrid();
             renderVoiceChannelsUI();
+            break;
+
+        case 'user-status-updated':
+            // Kullanıcı aktivite / oyun durumunu değiştirdi
+            if (msg.client_id === state.myId) {
+                state.customStatus = msg.custom_status || '';
+            } else if (state.allUsers[msg.client_id]) {
+                state.allUsers[msg.client_id].custom_status = msg.custom_status || '';
+            }
+            updateUserCardCustomStatus(msg.client_id, msg.custom_status || '');
+            renderVoiceChannelsUI();
+            break;
+
+        case 'soundboard-played':
+            // Odadaki biri Soundboard ses efekti çaldı
+            SoundEffects.playSoundboard(msg.sound_id);
+            triggerCardReactionBurst(msg.sender_id, '🎹');
+            showToast('🎹', `<strong>${escapeHtml(msg.nickname)}</strong> ses efekti çaldı: <strong>${escapeHtml(getSoundboardLabel(msg.sound_id))}</strong>`, 'toast-soundboard');
+            break;
+
+        case 'live-reaction':
+            // Odadaki biri canlı emoji tepkisi gönderdi
+            spawnFloatingReaction(msg.emoji, msg.nickname);
+            triggerCardReactionBurst(msg.sender_id, msg.emoji);
+            break;
+
+        case 'user-nudged':
+            // Bir arkadaşımız bizi dürttü (Poke / Nudge)
+            SoundEffects.playNudgeAlert();
+            const myCard = document.getElementById(`card-${state.myId}`);
+            if (myCard) {
+                myCard.classList.remove('card-nudge-shake');
+                void myCard.offsetWidth;
+                myCard.classList.add('card-nudge-shake');
+            }
+            showToast('🔔', `<strong>${escapeHtml(msg.from_nickname)}</strong> seni dürttü! Hey, orada mısın? 👋`, 'toast-nudge');
             break;
 
         case 'pong':
@@ -2013,6 +2472,7 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
     const userObj = isSelf ? null : state.allUsers[userId];
     const role = isSelf ? state.myRole : (userObj?.role || 'user');
     const isServerMuted = isSelf ? state.isServerMuted : Boolean(userObj?.is_server_muted);
+    const customStatus = isSelf ? (state.customStatus || '') : (userObj?.custom_status || '');
 
     if (isServerMuted) {
         card.classList.add('server-muted');
@@ -2023,6 +2483,9 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
 
     card.innerHTML = `
         <div class="user-card-actions">
+            ${!isSelf ? `
+                <button type="button" class="btn-card-nudge" data-user-id="${userId}" title="${escapeHtml(nickname)} kullanıcısını dürt (Sesli bildirim gönder)">🔔 Dürt</button>
+            ` : ''}
             ${canMod ? `
                 <button type="button" class="btn-card-quick-mute ${isServerMuted ? 'active-muted' : ''}" data-user-id="${userId}" title="${isServerMuted ? 'Susturmayı Kaldır' : 'Mikrofonu Sunucu Genelinde Sustur'}">
                     ${isServerMuted ? '🔊 Susturmayı Aç' : '🔇 Sustur'}
@@ -2046,6 +2509,10 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
                 <span class="role-badge role-${role}">${getRoleLabel(role)}</span>
                 ${isServerMuted ? '<span class="badge-server-muted" title="Sunucu Genelinde Susturuldu">🔇 Susturuldu</span>' : ''}
                 ${isSelf ? '<span class="tag-you">Sen</span>' : ''}
+            </div>
+
+            <div class="user-card-status-pill ${customStatus ? '' : 'hidden'}" id="status-pill-${userId}" title="${escapeHtml(customStatus)}">
+                <span>${escapeHtml(customStatus)}</span>
             </div>
 
             ${!isSelf ? `
@@ -2083,8 +2550,16 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
         }
     }
 
-    // Arkadaşın sesini ayarlama (Individual Volume Slider) ve DM Başlatma
+    // Arkadaşın sesini ayarlama (Individual Volume Slider), Dürtme (Nudge) ve DM Başlatma
     if (!isSelf) {
+        const btnNudge = card.querySelector('.btn-card-nudge');
+        if (btnNudge) {
+            btnNudge.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sendUserNudge(userId, nickname);
+            });
+        }
+
         const slider = card.querySelector('.peer-volume-slider');
         const valLabel = card.querySelector(`#vol-val-${userId}`);
         if (slider) {
@@ -2107,14 +2582,246 @@ function createUserCardElement(userId, nickname, avatarColor, isSelf, isMuted = 
     return card;
 }
 
+function updateUserCardCustomStatus(userId, customStatus) {
+    const pill = document.getElementById(`status-pill-${userId}`);
+    if (!pill) return;
+    if (customStatus && customStatus.trim().length > 0) {
+        pill.textContent = customStatus.trim();
+        pill.title = customStatus.trim();
+        pill.classList.remove('hidden');
+    } else {
+        pill.textContent = '';
+        pill.title = '';
+        pill.classList.add('hidden');
+    }
+}
+
 function setPeerVolume(userId, volumePercent) {
     const peer = state.peers[userId];
     if (peer && peer.audioEl) {
-        // Standart HTML5 audio elementi 0.0 ile 1.0 arasındadır
-        // %200 ses için 1.0 sınırlandırılır veya GainNode ile yükseltilebilir
-        peer.audioEl.volume = Math.min(1.0, Math.max(0.0, volumePercent / 100));
         peer.volume = volumePercent;
+        if (volumePercent <= 100) {
+            peer.audioEl.volume = Math.min(1.0, Math.max(0.0, volumePercent / 100));
+            if (peer.boostGainNode) {
+                peer.boostGainNode.gain.value = 0;
+            }
+        } else {
+            // %100 - %200 arası gerçek Web Audio Gain Boost
+            peer.audioEl.volume = 1.0;
+            try {
+                SoundEffects.init();
+                if (state.audioCtx && peer.audioEl.srcObject) {
+                    if (state.audioCtx.state === 'suspended') {
+                        state.audioCtx.resume().catch(() => {});
+                    }
+                    if (!peer.boostGainNode) {
+                        peer.boostSource = state.audioCtx.createMediaStreamSource(peer.audioEl.srcObject);
+                        peer.boostGainNode = state.audioCtx.createGain();
+                        peer.boostSource.connect(peer.boostGainNode);
+                        peer.boostGainNode.connect(state.audioCtx.destination);
+                    }
+                    peer.boostGainNode.gain.value = (volumePercent - 100) / 100;
+                }
+            } catch (e) {
+                console.warn("200% ses yükseltme hatası:", e);
+            }
+        }
     }
+}
+
+// ============================================================================
+// 6.5 YENİ NESİL ÖZELLİKLER: TEMA, SOUNDBOARD, CANLI EMOJİ, DURUM & DÜRTME
+// ============================================================================
+const THEMES = [
+    { id: 'default', icon: '🌙', label: 'Gece Mavisi' },
+    { id: 'cyber',   icon: '🔮', label: 'Siber Mor' },
+    { id: 'emerald', icon: '🌲', label: 'Zümrüt Orman' },
+    { id: 'crimson', icon: '🔥', label: 'Kızıl Alev' }
+];
+
+function applyTheme(themeId) {
+    const found = THEMES.find(t => t.id === themeId) || THEMES[0];
+    state.theme = found.id;
+    try {
+        localStorage.setItem('agalar_theme', found.id);
+    } catch (e) {}
+
+    if (found.id === 'default') {
+        document.body.removeAttribute('data-theme');
+    } else {
+        document.body.setAttribute('data-theme', found.id);
+    }
+
+    if (el.themeIcon) el.themeIcon.textContent = found.icon;
+    if (el.themeLabel) el.themeLabel.textContent = found.label;
+}
+
+function cycleTheme() {
+    const idx = THEMES.findIndex(t => t.id === state.theme);
+    const next = THEMES[(idx + 1) % THEMES.length];
+    applyTheme(next.id);
+    showToast(next.icon, `Tema değiştirildi: <strong>${next.label}</strong>`);
+}
+
+function getSoundboardLabel(soundId) {
+    const map = {
+        airhorn: 'Airhorn (Korna)',
+        rimshot: 'Ba-Dum-Tss',
+        applause: 'Alkış Tufanı',
+        trombone: 'Sad Trombone',
+        alarm: 'Kırmızı Alarm',
+        coin: '8-Bit Altın',
+        gameover: 'Game Over',
+        dingdong: 'Kapı Zili'
+    };
+    return map[soundId] || soundId;
+}
+
+let lastSoundboardTime = 0;
+function sendSoundboardPlay(soundId) {
+    const now = Date.now();
+    if (now - lastSoundboardTime < 650) return; // Spam önleme
+    lastSoundboardTime = now;
+
+    // Eğer odadaysak WebSocket ile tüm odaya gönder, değilsek yerel çal
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'soundboard-play',
+            sound_id: soundId
+        }));
+    } else {
+        SoundEffects.playSoundboard(soundId);
+    }
+
+    // Buton görsel animasyonu
+    const pad = document.querySelector(`.sb-pad[data-sound="${soundId}"]`);
+    if (pad) {
+        pad.classList.add('playing');
+        setTimeout(() => pad.classList.remove('playing'), 450);
+    }
+}
+
+let lastReactionTime = 0;
+function sendLiveReaction(emoji) {
+    const now = Date.now();
+    if (now - lastReactionTime < 280) return;
+    lastReactionTime = now;
+
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'live-reaction',
+            emoji: emoji
+        }));
+    } else {
+        spawnFloatingReaction(emoji, state.nickname || 'Sen');
+        triggerCardReactionBurst(state.myId, emoji);
+    }
+}
+
+function spawnFloatingReaction(emoji, nickname) {
+    if (!el.floatingReactionsLayer) return;
+    const item = document.createElement('div');
+    item.className = 'floating-reaction-item';
+    const randomLeft = 18 + Math.floor(Math.random() * 64);
+    item.style.left = `${randomLeft}%`;
+    item.innerHTML = `
+        <span>${escapeHtml(emoji)}</span>
+        <span class="floating-reaction-nick">${escapeHtml(nickname || '')}</span>
+    `;
+    el.floatingReactionsLayer.appendChild(item);
+    setTimeout(() => {
+        try { item.remove(); } catch (e) {}
+    }, 2700);
+}
+
+function triggerCardReactionBurst(userId, emoji) {
+    const card = document.getElementById(`card-${userId}`);
+    if (!card) return;
+    const oldBurst = card.querySelector('.user-card-reaction-burst');
+    if (oldBurst) oldBurst.remove();
+
+    const burst = document.createElement('div');
+    burst.className = 'user-card-reaction-burst';
+    burst.textContent = emoji;
+    card.appendChild(burst);
+
+    setTimeout(() => {
+        try { burst.remove(); } catch (e) {}
+    }, 1800);
+}
+
+let lastNudgeTime = 0;
+function sendUserNudge(targetId, targetNickname) {
+    const now = Date.now();
+    if (now - lastNudgeTime < 2000) {
+        showToast('⏳', 'Çok hızlı dürtüyorsun! Lütfen 2 saniye bekle.');
+        return;
+    }
+    lastNudgeTime = now;
+
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'nudge-user',
+            target_id: targetId
+        }));
+        const targetCard = document.getElementById(`card-${targetId}`);
+        if (targetCard) {
+            targetCard.classList.remove('card-nudge-shake');
+            void targetCard.offsetWidth;
+            targetCard.classList.add('card-nudge-shake');
+        }
+        showToast('🔔', `<strong>${escapeHtml(targetNickname)}</strong> dürtüldü!`);
+    }
+}
+
+function setCustomStatus(statusText) {
+    const clean = (statusText || '').trim().substring(0, 60);
+    state.customStatus = clean;
+    try {
+        localStorage.setItem('agalar_custom_status', clean);
+    } catch (e) {}
+
+    if (el.customStatusInput) {
+        el.customStatusInput.value = clean;
+    }
+    if (el.statusBtnLabel) {
+        el.statusBtnLabel.textContent = clean ? clean.substring(0, 16) + (clean.length > 16 ? '…' : '') : 'Durum Seç';
+    }
+    if (el.btnToggleStatusDrawer) {
+        el.btnToggleStatusDrawer.classList.toggle('active-drawer', Boolean(clean));
+    }
+    document.querySelectorAll('.status-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.getAttribute('data-status') === clean && clean !== '');
+    });
+
+    updateUserCardCustomStatus(state.myId, clean);
+    renderVoiceChannelsUI();
+
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'user-status-change',
+            custom_status: clean
+        }));
+    }
+}
+
+function showToast(icon, htmlText, extraClass = '') {
+    if (!el.toastContainer) return;
+    const toast = document.createElement('div');
+    toast.className = `agalar-toast ${extraClass}`.trim();
+    toast.innerHTML = `
+        <span class="agalar-toast-icon">${icon}</span>
+        <div class="agalar-toast-body">${htmlText}</div>
+    `;
+    el.toastContainer.appendChild(toast);
+    setTimeout(() => {
+        try {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(30px)';
+            toast.style.transition = 'all 0.25s ease';
+            setTimeout(() => toast.remove(), 260);
+        } catch (e) {}
+    }, 3400);
 }
 
 function removeUserCard(userId) {
@@ -2832,6 +3539,7 @@ function renderVoiceChannelsUI() {
                 nickname: state.nickname + " (Sen)",
                 avatar_color: state.avatarColor,
                 is_speaking: state.isSpeaking,
+                custom_status: state.customStatus || '',
                 is_self: true
             });
         }
@@ -2847,6 +3555,16 @@ function renderVoiceChannelsUI() {
         const badge = document.getElementById(`ch-count-${chId}`);
         if (badge) badge.textContent = usersInChannel.length;
 
+        // Aktif kanal komut barı başlık ve kişi sayısını güncelle
+        if (state.voiceChannel === chId) {
+            if (el.activeChannelHeaderTitle) {
+                el.activeChannelHeaderTitle.textContent = state.channelNames[chId] || chId;
+            }
+            if (el.activeChannelUserCount) {
+                el.activeChannelUserCount.textContent = `${usersInChannel.length} Kişi Odada`;
+            }
+        }
+
         // Kullanıcı mini listesini güncelle
         const usersContainer = document.getElementById(`ch-users-${chId}`);
         if (usersContainer) {
@@ -2854,9 +3572,13 @@ function renderVoiceChannelsUI() {
             usersInChannel.forEach(u => {
                 const item = document.createElement('div');
                 item.className = `ch-user-item ${u.is_speaking ? 'speaking' : ''}`;
+                const statusBadge = u.custom_status
+                    ? `<span style="margin-left:auto;font-size:10px;color:var(--accent);opacity:0.9;max-width:95px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(u.custom_status)}">${escapeHtml(u.custom_status)}</span>`
+                    : '';
                 item.innerHTML = `
                     <span class="ch-user-dot"></span>
-                    <span>${escapeHtml(u.nickname)}</span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(u.nickname)}</span>
+                    ${statusBadge}
                 `;
                 usersContainer.appendChild(item);
             });
@@ -3960,6 +4682,135 @@ function initEventListeners() {
     // Emoji Seçici Başlat
     initEmojiPicker();
 
+    // Yeni Nesil Tema Değiştirici (4 Tema)
+    if (el.btnThemeCycle) {
+        el.btnThemeCycle.addEventListener('click', cycleTheme);
+    }
+
+    // Canlı Emoji Tepkileri (Floating Room Reactions)
+    document.querySelectorAll('.btn-quick-react').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const emoji = btn.getAttribute('data-emoji');
+            if (emoji) sendLiveReaction(emoji);
+        });
+    });
+
+    // Çekmece (Drawer) Aç / Kapat Yardımcıları (Aynı anda tek çekmece açık kalsın)
+    const closeAllFeatureDrawers = (exceptDrawer = null) => {
+        [el.soundboardDrawer, el.voicefxDrawer, el.statusDrawer].forEach(d => {
+            if (d && d !== exceptDrawer) d.classList.add('hidden');
+        });
+        if (el.btnToggleSoundboard && exceptDrawer !== el.soundboardDrawer) {
+            el.btnToggleSoundboard.classList.remove('active-drawer');
+        }
+        if (el.btnToggleVoicefx && exceptDrawer !== el.voicefxDrawer) {
+            el.btnToggleVoicefx.classList.remove('active-drawer');
+        }
+    };
+
+    // 1. Soundboard Çekmecesi ve Ses Efekt Butonları
+    if (el.btnToggleSoundboard && el.soundboardDrawer) {
+        el.btnToggleSoundboard.addEventListener('click', () => {
+            const isHidden = el.soundboardDrawer.classList.contains('hidden');
+            closeAllFeatureDrawers(el.soundboardDrawer);
+            el.soundboardDrawer.classList.toggle('hidden', !isHidden);
+            el.btnToggleSoundboard.classList.toggle('active-drawer', isHidden);
+        });
+    }
+    if (el.btnCloseSoundboard && el.soundboardDrawer) {
+        el.btnCloseSoundboard.addEventListener('click', () => {
+            el.soundboardDrawer.classList.add('hidden');
+            if (el.btnToggleSoundboard) el.btnToggleSoundboard.classList.remove('active-drawer');
+        });
+    }
+    document.querySelectorAll('.sb-pad').forEach(pad => {
+        pad.addEventListener('click', () => {
+            const soundId = pad.getAttribute('data-sound');
+            if (soundId) sendSoundboardPlay(soundId);
+        });
+    });
+
+    // 2. VoiceFX (Ses Değiştirici & Mikrofon Güçlendirici) Çekmecesi
+    if (el.btnToggleVoicefx && el.voicefxDrawer) {
+        el.btnToggleVoicefx.addEventListener('click', () => {
+            const isHidden = el.voicefxDrawer.classList.contains('hidden');
+            closeAllFeatureDrawers(el.voicefxDrawer);
+            el.voicefxDrawer.classList.toggle('hidden', !isHidden);
+            el.btnToggleVoicefx.classList.toggle('active-drawer', isHidden);
+        });
+    }
+    if (el.btnCloseVoicefx && el.voicefxDrawer) {
+        el.btnCloseVoicefx.addEventListener('click', () => {
+            el.voicefxDrawer.classList.add('hidden');
+            if (el.btnToggleVoicefx) el.btnToggleVoicefx.classList.remove('active-drawer');
+        });
+    }
+    document.querySelectorAll('.vfx-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const mode = chip.getAttribute('data-vfx') || 'normal';
+            setVoiceFxMode(mode);
+            showToast('🎭', `Ses efekti değiştirildi: <strong>${chip.textContent.trim()}</strong>`);
+        });
+    });
+    if (el.sliderMicBoost) {
+        el.sliderMicBoost.addEventListener('input', (e) => {
+            setMicBoost(e.target.value);
+        });
+    }
+
+    // 3. Canlı Durum / Oyun Aktivitesi Çekmecesi
+    if (el.btnToggleStatusDrawer && el.statusDrawer) {
+        el.btnToggleStatusDrawer.addEventListener('click', () => {
+            const isHidden = el.statusDrawer.classList.contains('hidden');
+            closeAllFeatureDrawers(el.statusDrawer);
+            el.statusDrawer.classList.toggle('hidden', !isHidden);
+        });
+    }
+    if (el.btnCloseStatusDrawer && el.statusDrawer) {
+        el.btnCloseStatusDrawer.addEventListener('click', () => {
+            el.statusDrawer.classList.add('hidden');
+        });
+    }
+    document.querySelectorAll('.status-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const st = chip.getAttribute('data-status') || '';
+            setCustomStatus(st);
+            if (el.statusDrawer) el.statusDrawer.classList.add('hidden');
+            showToast('🎮', st ? `Durum güncellendi: <strong>${escapeHtml(st)}</strong>` : 'Durum temizlendi.');
+        });
+    });
+    if (el.btnSaveCustomStatus && el.customStatusInput) {
+        el.btnSaveCustomStatus.addEventListener('click', () => {
+            const val = el.customStatusInput.value.trim();
+            setCustomStatus(val);
+            if (el.statusDrawer) el.statusDrawer.classList.add('hidden');
+            showToast('🎮', val ? `Durum güncellendi: <strong>${escapeHtml(val)}</strong>` : 'Durum temizlendi.');
+        });
+        el.customStatusInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                el.btnSaveCustomStatus.click();
+            }
+        });
+    }
+
+    // 4. Komut Barı Hızlı Ekran Paylaşımı Butonu
+    if (el.btnVcbScreenShare) {
+        el.btnVcbScreenShare.addEventListener('click', () => {
+            if (state.sharedBrowser && state.sharedBrowser.screenStream) {
+                stopScreenShare();
+                if (state.sharedBrowser.controllerId === state.myId) {
+                    closeSharedBrowser();
+                }
+            } else {
+                if (!state.sharedBrowser.active) {
+                    openSharedBrowser('CANLI_YAYIN', 'stream');
+                }
+                startScreenShare();
+            }
+        });
+    }
+
     // Auth Sekmeleri (Giriş / Kayıt)
     if (el.tabBtnLogin && el.tabBtnRegister) {
         el.tabBtnLogin.addEventListener('click', () => {
@@ -4852,6 +5703,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.search);
 
     // Önce tüm buton ve form dinleyicilerini hemen bağla (Sayfa yenilenmesini /? sorununu kesin önler)
+    applyTheme(state.theme);
+    if (state.customStatus) {
+        setCustomStatus(state.customStatus);
+    }
     initEventListeners();
     checkTunnelStatus();
     initDesktopExperience();
@@ -4921,7 +5776,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Service Worker Kaydı (PWA & Çevrimdışı Önbellek)
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=20261023_5').then((reg) => {
+        navigator.serviceWorker.register('/sw.js?v=20261023_7').then((reg) => {
             console.log('PWA ServiceWorker devrede:', reg.scope);
         }).catch((err) => {
             console.log('ServiceWorker kayıt detayı:', err);
