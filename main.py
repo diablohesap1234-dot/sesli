@@ -9,10 +9,12 @@ import uuid
 import aiofiles
 import os
 import hashlib
+import hmac
+import base64
 import secrets
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
@@ -138,6 +140,28 @@ class DatabaseManager:
 
         self._ensure_default_admin()
 
+    TOKEN_SECRET = b"agalar_sesli_sohbet_secret_key_2026_v2"
+
+    def _make_signed_token(self, payload: dict) -> str:
+        raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        b64 = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+        sig = hmac.new(self.TOKEN_SECRET, b64.encode("ascii"), hashlib.sha256).hexdigest()
+        return f"{b64}.{sig}"
+
+    def _verify_signed_token(self, token: str) -> Optional[dict]:
+        if not token or "." not in token:
+            return None
+        try:
+            b64, sig = token.split(".", 1)
+            expected = hmac.new(self.TOKEN_SECRET, b64.encode("ascii"), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(sig, expected):
+                return None
+            pad = "=" * (-len(b64) % 4)
+            data = json.loads(base64.urlsafe_b64decode((b64 + pad).encode("ascii")).decode("utf-8"))
+            return data if isinstance(data, dict) else None
+        except Exception:
+            return None
+
     def _hash_password(self, password: str, salt: Optional[str] = None) -> str:
         if not salt:
             salt = secrets.token_hex(16)
@@ -204,7 +228,18 @@ class DatabaseManager:
             conn.commit()
             user_id = cursor.lastrowid
 
-            token = secrets.token_hex(32)
+            user_obj = {
+                "id": user_id,
+                "email": email,
+                "nickname": nickname,
+                "avatar_color": avatar_color,
+                "role": role,
+                "can_mute": bool(can_mute),
+                "can_kick": bool(can_kick),
+                "can_move": bool(can_move),
+                "can_manage_roles": bool(can_manage)
+            }
+            token = self._make_signed_token({**user_obj, "pwd_hash": pwd_hash, "nonce": secrets.token_hex(8)})
             cursor.execute("""
                 INSERT INTO sessions (token, user_id, created_at, last_seen)
                 VALUES (?, ?, ?, ?)
@@ -213,17 +248,7 @@ class DatabaseManager:
 
             return {
                 "token": token,
-                "user": {
-                    "id": user_id,
-                    "email": email,
-                    "nickname": nickname,
-                    "avatar_color": avatar_color,
-                    "role": role,
-                    "can_mute": bool(can_mute),
-                    "can_kick": bool(can_kick),
-                    "can_move": bool(can_move),
-                    "can_manage_roles": bool(can_manage)
-                }
+                "user": user_obj
             }
 
     def login_user(self, email: str, password: str) -> dict:
@@ -237,7 +262,18 @@ class DatabaseManager:
             if not user or not self._verify_password(password, user["password_hash"]):
                 raise ValueError("Hatalı e-posta veya şifre.")
 
-            token = secrets.token_hex(32)
+            user_obj = {
+                "id": user["id"],
+                "email": user["email"],
+                "nickname": user["nickname"],
+                "avatar_color": user["avatar_color"],
+                "role": user["role"],
+                "can_mute": bool(user["can_mute"]),
+                "can_kick": bool(user["can_kick"]),
+                "can_move": bool(user["can_move"]),
+                "can_manage_roles": bool(user["can_manage_roles"])
+            }
+            token = self._make_signed_token({**user_obj, "pwd_hash": user["password_hash"], "nonce": secrets.token_hex(8)})
             cursor.execute("""
                 INSERT INTO sessions (token, user_id, created_at, last_seen)
                 VALUES (?, ?, ?, ?)
@@ -246,17 +282,7 @@ class DatabaseManager:
 
             return {
                 "token": token,
-                "user": {
-                    "id": user["id"],
-                    "email": user["email"],
-                    "nickname": user["nickname"],
-                    "avatar_color": user["avatar_color"],
-                    "role": user["role"],
-                    "can_mute": bool(user["can_mute"]),
-                    "can_kick": bool(user["can_kick"]),
-                    "can_move": bool(user["can_move"]),
-                    "can_manage_roles": bool(user["can_manage_roles"])
-                }
+                "user": user_obj
             }
 
     def get_user_by_token(self, token: str) -> Optional[dict]:
@@ -286,6 +312,44 @@ class DatabaseManager:
                     "can_move": bool(user["can_move"]),
                     "can_manage_roles": bool(user["can_manage_roles"])
                 }
+
+            # Eğer Render container yeniden başlatıldığı için SQLite sıfırlanmışsa, imzalı token'dan kullanıcıyı ve oturumu geri yükle
+            verified = self._verify_signed_token(token)
+            if verified and verified.get("email"):
+                email = verified["email"].strip().lower()
+                cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+                existing = cursor.fetchone()
+                if not existing:
+                    pwd_hash = verified.get("pwd_hash") or self._hash_password(secrets.token_hex(8))
+                    role = verified.get("role", "user")
+                    can_mute = 1 if verified.get("can_mute") else 0
+                    can_kick = 1 if verified.get("can_kick") else 0
+                    can_move = 1 if verified.get("can_move") else 0
+                    can_manage = 1 if verified.get("can_manage_roles") else 0
+                    cursor.execute("""
+                        INSERT INTO users (email, password_hash, nickname, avatar_color, role, can_mute, can_kick, can_move, can_manage_roles, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (email, pwd_hash, verified.get("nickname", "Üye"), verified.get("avatar_color", "#5865F2"), role, can_mute, can_kick, can_move, can_manage, now))
+                    conn.commit()
+                    cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+                    existing = cursor.fetchone()
+                if existing:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO sessions (token, user_id, created_at, last_seen)
+                        VALUES (?, ?, ?, ?)
+                    """, (token, existing["id"], now, now))
+                    conn.commit()
+                    return {
+                        "id": existing["id"],
+                        "email": existing["email"],
+                        "nickname": existing["nickname"],
+                        "avatar_color": existing["avatar_color"],
+                        "role": existing["role"],
+                        "can_mute": bool(existing["can_mute"]),
+                        "can_kick": bool(existing["can_kick"]),
+                        "can_move": bool(existing["can_move"]),
+                        "can_manage_roles": bool(existing["can_manage_roles"])
+                    }
             return None
 
     def get_user_by_id(self, user_id: int) -> Optional[dict]:
@@ -765,6 +829,24 @@ async def web_proxy(url: str = Query(...)):
         return Response(content=err_html, media_type="text/html")
 
 
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0"
+}
+
+
+@app.middleware("http")
+async def disable_static_code_cache(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".js", ".css", ".html")):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 @app.get("/")
 async def get_index():
     index_path = STATIC_DIR / "index.html"
@@ -772,14 +854,14 @@ async def get_index():
         index_path = BASE_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html bulunamadı")
-    return FileResponse(index_path)
+    return FileResponse(index_path, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/style.css")
 async def get_root_style():
     p = STATIC_DIR / "style.css" if (STATIC_DIR / "style.css").exists() else BASE_DIR / "style.css"
     if p.exists():
-        return FileResponse(p, media_type="text/css")
+        return FileResponse(p, media_type="text/css", headers=NO_CACHE_HEADERS)
     raise HTTPException(status_code=404, detail="style.css bulunamadı")
 
 
@@ -787,7 +869,7 @@ async def get_root_style():
 async def get_root_app():
     p = STATIC_DIR / "app.js" if (STATIC_DIR / "app.js").exists() else BASE_DIR / "app.js"
     if p.exists():
-        return FileResponse(p, media_type="application/javascript")
+        return FileResponse(p, media_type="application/javascript", headers=NO_CACHE_HEADERS)
     raise HTTPException(status_code=404, detail="app.js bulunamadı")
 
 
@@ -811,7 +893,7 @@ async def get_manifest():
 async def get_sw():
     p = STATIC_DIR / "sw.js" if (STATIC_DIR / "sw.js").exists() else BASE_DIR / "sw.js"
     if p.exists():
-        return FileResponse(p, media_type="application/javascript", headers={"Service-Worker-Allowed": "/"})
+        return FileResponse(p, media_type="application/javascript", headers={"Service-Worker-Allowed": "/", **NO_CACHE_HEADERS})
     raise HTTPException(status_code=404, detail="sw.js bulunamadı")
 
 

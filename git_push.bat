@@ -4,6 +4,6 @@ cd /d "%~dp0"
 echo ===================================================
 echo   GitHub'a Guncellemeler Gonderiliyor (Render Otomatik Deploy)...
 echo ===================================================
-git push origin main
+git push origin main --force
 echo.
 pause
