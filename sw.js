@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sesli-sohbet-v10';
+const CACHE_NAME = 'sesli-sohbet-v11';
 const STATIC_ASSETS = [
     '/',
     '/manifest.json',

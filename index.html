@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Agalar">
     <link rel="apple-touch-icon" href="/icon-192.png">
-    <link rel="stylesheet" href="/static/style.css?v=20261117_1">
+    <link rel="stylesheet" href="/static/style.css?v=20261118_1">
 </head>
 <body>
     <!-- MASAÜSTÜ SİNEMATİK AÇILIŞ ANİMASYONU (SPLASH SCREEN) -->
@@ -212,12 +212,18 @@
 
                             <div class="mic-meter-bar" title="Beyaz çizgi: Gürültü Engelleme Eşiği">
                                 <div id="mic-meter-fill" class="mic-meter-fill"></div>
-                                <div id="lobby-mic-threshold-marker" class="mic-threshold-marker" style="left: 20%;"></div>
+                                <div id="lobby-mic-threshold-marker" class="mic-threshold-marker" style="left: 15%;"></div>
                             </div>
                             <div class="lobby-threshold-row">
-                                <label for="lobby-slider-mic-threshold">🛡️ Gürültü Engelleme Eşiği:</label>
-                                <input type="range" id="lobby-slider-mic-threshold" min="1" max="90" value="20" class="form-range">
-                                <span id="lobby-threshold-val" class="lobby-threshold-val">20%</span>
+                                <label for="lobby-slider-mic-threshold">🛡️ Gürültü Eşiği:</label>
+                                <input type="range" id="lobby-slider-mic-threshold" min="1" max="85" value="15" class="form-range">
+                                <span id="lobby-threshold-val" class="lobby-threshold-val">15%</span>
+                            </div>
+                            <div class="noise-gate-presets">
+                                <button type="button" class="ng-preset-btn" data-threshold="1" title="Eşik olmadan sesi sürekli iletir">🔓 Sürekli Açık (1%)</button>
+                                <button type="button" class="ng-preset-btn" data-threshold="8" title="Kısık sesleri bile algılar">🟢 Hassas (8%)</button>
+                                <button type="button" class="ng-preset-btn active" data-threshold="15" title="Normal konuşma ve hafif gürültü engelleme">⚖️ Dengeli (15%)</button>
+                                <button type="button" class="ng-preset-btn" data-threshold="32" title="Mekanik klavye ve fan seslerini keser">🛡️ Güçlü (32%)</button>
                             </div>
                             <p class="mic-tip">Çizginin altındaki arka plan/klavye sesleri kesilir, sadece çizgiyi geçen sesiniz iletilir.</p>
                         </div>
@@ -928,12 +934,18 @@
                     <div class="setting-item">
                         <div class="setting-label-row">
                             <label for="slider-mic-threshold">🛡️ Gürültü Engelleme & Hassasiyet Eşiği (Noise Gate)</label>
-                            <span id="threshold-val" class="setting-count-badge">20%</span>
+                            <span id="threshold-val" class="setting-count-badge">15%</span>
                         </div>
                         <div class="slider-row">
-                            <input type="range" id="slider-mic-threshold" min="1" max="90" value="20" class="form-range">
+                            <input type="range" id="slider-mic-threshold" min="1" max="85" value="15" class="form-range">
                         </div>
-                        <p class="setting-hint">Üstteki çubukta bulunan <strong>beyaz çizginin</strong> altındaki klavye, nefes ve ortam gürültüleri tamamen kesilir; sadece eşiği geçen sesiniz karşıya iletilir.</p>
+                        <div class="noise-gate-presets">
+                            <button type="button" class="ng-preset-btn" data-threshold="1">🔓 Sürekli Açık (1%)</button>
+                            <button type="button" class="ng-preset-btn" data-threshold="8">🟢 Hassas (8%)</button>
+                            <button type="button" class="ng-preset-btn active" data-threshold="15">⚖️ Dengeli (15%)</button>
+                            <button type="button" class="ng-preset-btn" data-threshold="32">🛡️ Güçlü (32%)</button>
+                        </div>
+                        <p class="setting-hint">Üstteki çubukta bulunan <strong>beyaz çizginin</strong> altındaki klavye, nefes ve ortam gürültüleri kesilir; sadece eşiği geçen sesiniz karşıya iletilir.</p>
                     </div>
 
                     <div class="setting-item">
@@ -1245,6 +1257,6 @@
     </div>
 
     <!-- SESLERİ OYNATMAK İÇİN SENTEZLEME YAZILIMI APP.JS İÇİNDE BULUNMAKTADIR -->
-    <script src="/static/app.js?v=20261117_1"></script>
+    <script src="/static/app.js?v=20261118_1"></script>
 </body>
 </html>

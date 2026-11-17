@@ -26,8 +26,9 @@ const state = {
     inputMode: 'vad', // 'vad' (Açık Mikrofon) veya 'ptt' (Bas-Konuş)
     pttKey: 'Space',
     isPttPressed: false,
-    vadThreshold: Math.max(1, Math.min(90, parseInt(localStorage.getItem('agalar_vad_threshold')) || 20)), // 1 - 90
+    vadThreshold: Math.max(1, Math.min(85, parseInt(localStorage.getItem('agalar_vad_threshold')) || 15)), // 1 - 85
     vadGateGain: null,
+    analyserHasLiveSignal: false,
     isSpeaking: false,
     lastSpokeTime: 0,
     selectedAudioInput: localStorage.getItem('agalar_selected_mic') || '',
@@ -1025,6 +1026,9 @@ function computeMicVolumePercent(analyser, dataArray) {
         if (delta > maxDelta) maxDelta = delta;
         sumSq += delta * delta;
     }
+    if (maxDelta > 0) {
+        state.analyserHasLiveSignal = true;
+    }
     const rms = Math.sqrt(sumSq / len);
     // RMS + Peak hibrit ölçümü: konuşma enerjisini 0-100 aralığına dengeli ve hassas haritalar
     const weighted = (rms * 0.65) + (maxDelta * 0.35);
@@ -1032,7 +1036,7 @@ function computeMicVolumePercent(analyser, dataArray) {
 }
 
 function setVadThreshold(val) {
-    const clamped = Math.max(1, Math.min(90, parseInt(val) || 20));
+    const clamped = Math.max(1, Math.min(85, parseInt(val) || 15));
     state.vadThreshold = clamped;
     try {
         localStorage.setItem('agalar_vad_threshold', String(clamped));
@@ -1045,10 +1049,10 @@ function setVadThreshold(val) {
         el.lobbySliderMicThreshold.value = clamped;
     }
     if (el.thresholdVal) {
-        el.thresholdVal.textContent = `${clamped}%`;
+        el.thresholdVal.textContent = clamped <= 2 ? `Kapalı (${clamped}%)` : `${clamped}%`;
     }
     if (el.lobbyThresholdVal) {
-        el.lobbyThresholdVal.textContent = `${clamped}%`;
+        el.lobbyThresholdVal.textContent = clamped <= 2 ? `Açık` : `${clamped}%`;
     }
     if (el.settingsMicThresholdMarker) {
         el.settingsMicThresholdMarker.style.left = `${clamped}%`;
@@ -1056,57 +1060,69 @@ function setVadThreshold(val) {
     if (el.lobbyMicThresholdMarker) {
         el.lobbyMicThresholdMarker.style.left = `${clamped}%`;
     }
+    document.querySelectorAll('.ng-preset-btn').forEach(btn => {
+        const t = parseInt(btn.getAttribute('data-threshold'));
+        btn.classList.toggle('active', t === clamped);
+    });
+
+    // Eğer eşik <= 2 (Sürekli Açık) seçildiyse ve mikrofon susturulmamışsa kapıyı anında aç
+    if (clamped <= 2 && state.inputMode === 'vad') {
+        applyMicGateState(true);
+    }
 }
 
-let gateCloseTrackTimeout = null;
 function applyMicGateState(isOpen) {
-    const rawEnabled = !state.isMuted && !state.isDeafened && !state.isServerMuted;
+    const unmuted = !state.isMuted && !state.isDeafened && !state.isServerMuted;
+
+    // 1. Ham mikrofon track'i (rawMicStream) susturulmadığı sürece DAİMA açık kalmalıdır!
+    // Böylece ses analizörü (state.analyser) gürültü kapısı kapalıyken bile mikrofonu %100 kesintisiz dinler.
     if (state.rawMicStream) {
         const rawTrack = state.rawMicStream.getAudioTracks()[0];
-        if (rawTrack && rawTrack.enabled !== rawEnabled) {
-            rawTrack.enabled = rawEnabled;
+        if (rawTrack && rawTrack.enabled !== unmuted) {
+            rawTrack.enabled = unmuted;
         }
     }
 
-    const canTransmit = rawEnabled && Boolean(isOpen);
+    // 2. Fail-Safe Güvenlik Kuralı:
+    // Eğer AudioContext henüz çalışmıyorsa ('running' değilse), veya analizör henüz canlı sinyal okumadıysa,
+    // veya kullanıcı eşiği <= 2 ("Sürekli Açık") yaptıysa: VAD modunda sesi ASLA kesme!
+    let shouldPass = Boolean(isOpen);
+    if (state.inputMode === 'vad') {
+        const audioCtxRunning = Boolean(state.audioCtx && state.audioCtx.state === 'running');
+        if (!audioCtxRunning || !state.analyserHasLiveSignal || state.vadThreshold <= 2) {
+            shouldPass = true;
+        }
+    }
 
-    if (state.vadGateGain && state.audioCtx) {
+    const canTransmit = unmuted && shouldPass;
+
+    // 3. Eğer VoiceFX / Boost aktifse vadGateGain üzerinden yumuşak geçiş yap
+    if (state.vadGateGain && state.audioCtx && state.audioCtx.state === 'running') {
         const now = state.audioCtx.currentTime;
         const targetGain = canTransmit ? 1.0 : 0.0;
-        const timeConstant = canTransmit ? 0.007 : 0.025; // 7ms hızlı açılış, 25ms yumuşak kapanış
+        const timeConstant = canTransmit ? 0.006 : 0.03;
         try {
             state.vadGateGain.gain.setTargetAtTime(targetGain, now, timeConstant);
         } catch (e) {
             state.vadGateGain.gain.value = targetGain;
         }
+    } else if (state.vadGateGain) {
+        state.vadGateGain.gain.value = canTransmit ? 1.0 : 0.0;
     }
 
+    // 4. WebRTC'ye giden klonlanmış/işlenmiş ses track'ini (localStream) kontrol et
     if (state.localStream && state.localStream !== state.rawMicStream) {
         const outTrack = state.localStream.getAudioTracks()[0];
-        if (outTrack) {
-            if (canTransmit) {
-                if (gateCloseTrackTimeout) {
-                    clearTimeout(gateCloseTrackTimeout);
-                    gateCloseTrackTimeout = null;
-                }
-                if (!outTrack.enabled) outTrack.enabled = true;
-            } else {
-                if (!gateCloseTrackTimeout) {
-                    gateCloseTrackTimeout = setTimeout(() => {
-                        gateCloseTrackTimeout = null;
-                        const stillClosed = !(!state.isMuted && !state.isDeafened && !state.isServerMuted && (state.inputMode === 'ptt' ? state.isPttPressed : state.isSpeaking));
-                        if (stillClosed && state.localStream && state.localStream !== state.rawMicStream) {
-                            const t = state.localStream.getAudioTracks()[0];
-                            if (t) t.enabled = false;
-                        }
-                    }, 65);
-                }
-            }
+        if (outTrack && outTrack.enabled !== canTransmit) {
+            outTrack.enabled = canTransmit;
         }
     } else if (state.localStream) {
+        // Eğer klon desteklenmeyen eski bir tarayıcıda localStream === rawMicStream ise,
+        // analizörün susmaması için sadece gerçek Mute/PTT durumunda track'i kapat
         const outTrack = state.localStream.getAudioTracks()[0];
-        if (outTrack) {
-            outTrack.enabled = canTransmit;
+        const fallbackEnable = unmuted && (state.inputMode === 'ptt' ? state.isPttPressed : true);
+        if (outTrack && outTrack.enabled !== fallbackEnable) {
+            outTrack.enabled = fallbackEnable;
         }
     }
 }
@@ -1211,6 +1227,13 @@ function rebuildVoiceFxStream() {
         state.fxCleanup = null;
     }
 
+    // Eski klonlanmış localStream varsa ve rawMicStream'den farklıysa track'lerini durdur
+    if (state.localStream && state.localStream !== state.rawMicStream) {
+        try {
+            state.localStream.getTracks().forEach(t => t.stop());
+        } catch (e) {}
+    }
+
     SoundEffects.init();
     if (state.audioCtx && state.audioCtx.state === 'suspended') {
         state.audioCtx.resume().catch(() => {});
@@ -1219,40 +1242,69 @@ function rebuildVoiceFxStream() {
     const ctx = state.audioCtx;
     const mode = state.voiceFxMode || 'normal';
     const boost = (state.micBoostPercent || 100) / 100;
+    const rawTrack = state.rawMicStream.getAudioTracks()[0];
 
-    let finalStream = state.rawMicStream;
+    // 1. Ses Analizörü (state.analyser): Her zaman ham mikrofondan beslenir ve 0-gain ile ctx.destination'a
+    // bağlanır; böylece Chromium WebAudio motoru gürültü kapısı kapalıyken bile örnekleri %100 kesintisiz çeker!
+    const cleanupNodes = [];
+    const cleanupOscs = [];
+    state.vadGateGain = null;
 
     if (ctx) {
         try {
-            const rawSource = ctx.createMediaStreamSource(state.rawMicStream);
+            const analyserSource = ctx.createMediaStreamSource(state.rawMicStream);
+            const rumbleHp = ctx.createBiquadFilter();
+            rumbleHp.type = 'highpass';
+            rumbleHp.frequency.value = 80;
 
-            // 1. Dip Gürültü & Uğultu Kesici High-Pass Filtre (85 Hz altı masa darbesi / fan uğultusunu temizler)
-            const rumbleFilter = ctx.createBiquadFilter();
-            rumbleFilter.type = 'highpass';
-            rumbleFilter.frequency.value = 85;
-            rawSource.connect(rumbleFilter);
-
-            const boostGain = ctx.createGain();
-            boostGain.gain.value = boost;
-
-            // 2. Canlı Gürültü Kapısı (Noise Gate) Gain Düğümü: Eşik altındaki sesleri %100 keser
-            const vadGateGain = ctx.createGain();
-            const initiallyOpen = !state.isMuted && !state.isDeafened && !state.isServerMuted && (state.inputMode === 'ptt' ? state.isPttPressed : state.isSpeaking);
-            vadGateGain.gain.value = initiallyOpen ? 1.0 : 0.0;
-            state.vadGateGain = vadGateGain;
-
-            // 3. Pre-Gate Analyser: Gürültü kapısından ÖNCE bağlanır ki kapı kapalıyken bile konuştuğunuzu anında algılasın
             const preGateAnalyser = ctx.createAnalyser();
             preGateAnalyser.fftSize = 512;
+
+            // Sıfır kazançlı (sessiz) sink: WebAudio saatini (clock) her zaman aktif tutar, hoparlöre ses vermez
+            const silentKeepAlive = ctx.createGain();
+            silentKeepAlive.gain.value = 0;
+
+            analyserSource.connect(rumbleHp);
+            rumbleHp.connect(preGateAnalyser);
+            preGateAnalyser.connect(silentKeepAlive);
+            silentKeepAlive.connect(ctx.destination);
+
             state.analyser = preGateAnalyser;
+            cleanupNodes.push(analyserSource, rumbleHp, preGateAnalyser, silentKeepAlive);
+        } catch (anErr) {
+            console.warn("Mikrofon analizörü kurulum hatası:", anErr);
+        }
+    }
+
+    // 2. WebRTC Giden Ses Akışı (state.localStream):
+    // - Normal modda (VoiceFX kapalı ve Boost %100): Doğrudan donanım mikrofon track'inin bağımsız klonunu (rawTrack.clone()) kullan!
+    //   Bu sayede WebAudio MediaStreamDestination kaynaklı sessizlik/gecikme sorunları %100 ortadan kalkar,
+    //   ve klon track gürültü kapısı tarafından kapatıldığında orijinal rawTrack analizörü beslemeye devam eder!
+    // - VoiceFX veya Boost aktifse: WebAudio efekt zincirini kullan.
+    let finalStream = null;
+
+    if (ctx && (mode !== 'normal' || boost !== 1.0)) {
+        try {
+            const fxSource = ctx.createMediaStreamSource(state.rawMicStream);
+            const boostGain = ctx.createGain();
+            boostGain.gain.value = boost;
+            const vadGateGain = ctx.createGain();
+            vadGateGain.gain.value = 1.0;
+            state.vadGateGain = vadGateGain;
 
             const dest = ctx.createMediaStreamDestination();
-            const cleanupNodes = [rawSource, rumbleFilter, boostGain, vadGateGain, preGateAnalyser];
-            const cleanupOscs = [];
+            const fxKeepAlive = ctx.createGain();
+            fxKeepAlive.gain.value = 0;
 
-            let lastNode = rumbleFilter;
+            cleanupNodes.push(fxSource, boostGain, vadGateGain, fxKeepAlive);
+
+            let lastNode = fxSource;
 
             if (mode === 'studio') {
+                const hp = ctx.createBiquadFilter();
+                hp.type = 'highpass';
+                hp.frequency.value = 85;
+
                 const lowWarmth = ctx.createBiquadFilter();
                 lowWarmth.type = 'lowshelf';
                 lowWarmth.frequency.value = 180;
@@ -1268,13 +1320,13 @@ function rebuildVoiceFxStream() {
                 comp.knee.value = 12;
                 comp.ratio.value = 4;
 
-                lastNode.connect(lowWarmth);
+                lastNode.connect(hp);
+                hp.connect(lowWarmth);
                 lowWarmth.connect(highPresence);
                 highPresence.connect(comp);
                 lastNode = comp;
-                cleanupNodes.push(lowWarmth, highPresence, comp);
+                cleanupNodes.push(hp, lowWarmth, highPresence, comp);
             } else if (mode === 'robot') {
-                // Ring Modulator Robotik Ses
                 const ringGain = ctx.createGain();
                 ringGain.gain.value = 0;
 
@@ -1295,7 +1347,6 @@ function rebuildVoiceFxStream() {
                 cleanupNodes.push(ringGain, bp);
                 cleanupOscs.push(modOsc);
             } else if (mode === 'deep') {
-                // Kalın / Derin Sinematik Ses
                 const subBoost = ctx.createBiquadFilter();
                 subBoost.type = 'lowshelf';
                 subBoost.frequency.value = 160;
@@ -1315,7 +1366,6 @@ function rebuildVoiceFxStream() {
                 lastNode = lp;
                 cleanupNodes.push(subBoost, lp, shaper);
             } else if (mode === 'radio') {
-                // Telsiz / Walkie-Talkie Efekti
                 const hp = ctx.createBiquadFilter();
                 hp.type = 'highpass';
                 hp.frequency.value = 520;
@@ -1335,34 +1385,35 @@ function rebuildVoiceFxStream() {
                 cleanupNodes.push(hp, lp, shaper);
             }
 
-            // Zincir: lastNode -> boostGain -> preGateAnalyser (ölçüm) & vadGateGain (gürültü kapısı) -> dest (WebRTC)
             lastNode.connect(boostGain);
-            boostGain.connect(preGateAnalyser);
             boostGain.connect(vadGateGain);
             vadGateGain.connect(dest);
+            vadGateGain.connect(fxKeepAlive);
+            fxKeepAlive.connect(ctx.destination);
             finalStream = dest.stream;
-
-            state.fxCleanup = () => {
-                cleanupOscs.forEach(o => { try { o.stop(); o.disconnect(); } catch(e) {} });
-                cleanupNodes.forEach(n => { try { n.disconnect(); } catch(e) {} });
-            };
         } catch (fxErr) {
-            console.warn("Ses işleme zinciri oluşturulamadı, ham mikrofon kullanılıyor:", fxErr);
-            finalStream = state.rawMicStream;
-            try {
-                const analyserSource = ctx.createMediaStreamSource(state.rawMicStream);
-                state.analyser = ctx.createAnalyser();
-                state.analyser.fftSize = 512;
-                analyserSource.connect(state.analyser);
-            } catch (e) {}
+            console.warn("VoiceFX zinciri oluşturulamadı, doğrudan mikrofon kullanılıyor:", fxErr);
         }
     }
 
+    if (!finalStream) {
+        if (rawTrack && typeof rawTrack.clone === 'function') {
+            finalStream = new MediaStream([rawTrack.clone()]);
+        } else {
+            finalStream = state.rawMicStream;
+        }
+    }
+
+    state.fxCleanup = () => {
+        cleanupOscs.forEach(o => { try { o.stop(); o.disconnect(); } catch(e) {} });
+        cleanupNodes.forEach(n => { try { n.disconnect(); } catch(e) {} });
+    };
+
     state.localStream = finalStream;
 
-    // Ham mikrofonu açık tut (analyser ölçümü için), giden track'i ise gürültü kapısına bağla
-    const isGateCurrentlyOpen = state.inputMode === 'ptt' ? state.isPttPressed : state.isSpeaking;
-    applyMicGateState(isGateCurrentlyOpen);
+    // Başlangıçta sesi kesintisiz iletmek için kapıyı açık başlat (VAD döngüsü devralır)
+    const isGateInitiallyOpen = state.inputMode === 'ptt' ? state.isPttPressed : true;
+    applyMicGateState(isGateInitiallyOpen);
 
     const audioTrack = state.localStream.getAudioTracks()[0];
 
@@ -1512,11 +1563,10 @@ function startVoiceActivityDetection() {
             return;
         }
 
-        // AudioContext askıdaysa uyandırmayı dene
-        if (!state.audioCtx || state.audioCtx.state === 'suspended') {
+        // AudioContext askıdaysa uyandırmayı dene, ancak mikrofon sesini ASLA kesme (Fail-Safe Açık)
+        if (!state.audioCtx || state.audioCtx.state !== 'running') {
             if (state.audioCtx) state.audioCtx.resume().catch(() => {});
-            applyMicGateState(false);
-            setSpeakingState(false);
+            applyMicGateState(true);
             scheduleNext();
             return;
         }
@@ -1525,9 +1575,23 @@ function startVoiceActivityDetection() {
         // Seviye çubuğuyla birebir aynı 0-100 ölçeğini kullanır
         const levelPercent = computeMicVolumePercent(state.analyser, dataArray);
 
+        // Eğer eşik <= 2 ("Sürekli Açık") ise kapıyı hep açık tut, konuşma halkasını ise > 4% olduğunda yak
+        if (state.vadThreshold <= 2) {
+            applyMicGateState(true);
+            const nowOpen = Date.now();
+            if (levelPercent >= 5) {
+                state.lastSpokeTime = nowOpen;
+                setSpeakingState(true);
+            } else if (nowOpen - state.lastSpokeTime > 320) {
+                setSpeakingState(false);
+            }
+            scheduleNext();
+            return;
+        }
+
         // Histerezis: Açılmak için vadThreshold'u geçmeli, açıkken düşmek için vadThreshold - 3 altına inmeli
         const threshold = state.vadThreshold;
-        const effectiveThreshold = state.isSpeaking ? Math.max(1, threshold - 3) : threshold;
+        const effectiveThreshold = state.isSpeaking ? Math.max(2, threshold - 3) : threshold;
         const isLouder = levelPercent >= effectiveThreshold;
         const now = Date.now();
 
@@ -1535,8 +1599,8 @@ function startVoiceActivityDetection() {
             state.lastSpokeTime = now;
             applyMicGateState(true);
             setSpeakingState(true);
-        } else if (now - state.lastSpokeTime > 260) {
-            // 260ms ses eşiğinin altındaysa gürültü kapısını kapat ve karşıya giden sesi tamamen kes
+        } else if (now - state.lastSpokeTime > 400) {
+            // 400ms ses eşiğinin altındaysa gürültü kapısını kapat ve arka plan sesini kes
             applyMicGateState(false);
             setSpeakingState(false);
         }
@@ -1551,6 +1615,12 @@ function setSpeakingState(speaking) {
     if (state.isSpeaking !== speaking) {
         state.isSpeaking = speaking;
         updateUserCardSpeaking(state.myId, speaking);
+        if (el.btnToggleMic) {
+            el.btnToggleMic.classList.toggle('speaking-glow', Boolean(speaking && !state.isMuted && !state.isDeafened));
+        }
+        if (el.dockAvatar) {
+            el.dockAvatar.classList.toggle('speaking-glow', Boolean(speaking && !state.isMuted && !state.isDeafened));
+        }
 
         // Sunucuya ve arkadaşlara bildir
         if (state.ws && state.ws.readyState === WebSocket.OPEN) {
@@ -2295,6 +2365,13 @@ function createPeerConnection(peerId, isInitiator) {
         }
 
         const remoteStream = audioEl.srcObject;
+        audioEl.muted = Boolean(state.isDeafened);
+        if (typeof peer?.volume === 'number' && peer.volume <= 100) {
+            audioEl.volume = peer.volume > 1 ? Math.min(1, peer.volume / 100) : peer.volume;
+        } else {
+            audioEl.volume = 1.0;
+        }
+
         const playPromise = audioEl.play();
         if (playPromise !== undefined) {
             playPromise.then(() => {
@@ -2306,8 +2383,8 @@ function createPeerConnection(peerId, isInitiator) {
             });
         }
 
-        // Arkadaşın mikrofon ses seviyesini analiz ederek konuştuğunda yeşil halkayı tetikle
-        monitorRemoteStreamVolume(peerId, remoteStream);
+        // Arkadaşın mikrofon ses seviyesini WebRTC native RTP alıcısıyla analiz et (AudioContext ile stream'i bozmadan!)
+        monitorRemoteStreamVolume(peerId, event.receiver, remoteStream);
     };
 
     // ICE Adaylarını sunucu üzerinden karşı tarafa ilet
@@ -2321,6 +2398,12 @@ function createPeerConnection(peerId, isInitiator) {
                     candidate: event.candidate
                 }
             }));
+        }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'failed' && typeof pc.restartIce === 'function') {
+            try { pc.restartIce(); } catch (e) {}
         }
     };
 
@@ -2370,41 +2453,44 @@ function createPeerConnection(peerId, isInitiator) {
     return pc;
 }
 
-// Arkadaşın ses dalgasını dinleyerek onun kartında yeşil ışık yakma
-function monitorRemoteStreamVolume(peerId, stream) {
-    try {
-        SoundEffects.init();
-        if (!state.audioCtx) return;
-        const source = state.audioCtx.createMediaStreamSource(stream);
-        const analyser = state.audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
+// Arkadaşın ses dalgasını WebRTC Native RTP SynchronizationSources ile dinleyerek yeşil ışık yakma
+// (ÖNEMLİ: Uzak WebRTC stream üzerinde createMediaStreamSource çağrılmaz; böylece Chromium'da sesin yutulması %100 önlenir!)
+function monitorRemoteStreamVolume(peerId, rtpReceiver, stream) {
+    let lastRemoteActive = 0;
 
-        const dataArray = new Uint8Array(analyser.fftSize);
-        dataArray.fill(128); // 128 = Ses dalgasında mutlak sessizlik
-        let lastRemoteActive = 0;
+    function checkRemote() {
+        const peerObj = state.peers[peerId];
+        if (!peerObj) return;
 
-        function checkRemote() {
-            if (!state.peers[peerId]) return;
-            if (state.audioCtx && state.audioCtx.state === 'suspended') {
-                requestAnimationFrame(checkRemote);
-                return;
-            }
-            const pct = computeMicVolumePercent(analyser, dataArray);
-            const now = Date.now();
-            if (pct >= 4) {
-                lastRemoteActive = now;
-            }
-            const peerUser = state.allUsers[peerId];
-            const isPeerMuted = peerUser ? Boolean(peerUser.is_muted || peerUser.is_deafened || peerUser.is_server_muted) : false;
-            const isSpeaking = !isPeerMuted && ((now - lastRemoteActive < 240) || Boolean(peerUser && peerUser.is_speaking));
-            updateUserCardSpeaking(peerId, isSpeaking);
-            requestAnimationFrame(checkRemote);
+        // Eğer ses elementi durmuşsa ve sağırlaştırılmamışsak otomatik oynatmayı sürdür
+        if (peerObj.audioEl && peerObj.audioEl.paused && peerObj.audioEl.srcObject && !state.isDeafened) {
+            peerObj.audioEl.play().catch(() => {});
         }
-        checkRemote();
-    } catch (e) {
-        console.warn("Uzak ses analizörü başlatılamadı:", e);
+
+        let rtpLevel = 0;
+        try {
+            const receiver = rtpReceiver || (peerObj.pc && peerObj.pc.getReceivers ? peerObj.pc.getReceivers().find(r => r.track && r.track.kind === 'audio') : null);
+            if (receiver && typeof receiver.getSynchronizationSources === 'function') {
+                const sources = receiver.getSynchronizationSources();
+                if (sources && sources.length > 0 && typeof sources[0].audioLevel === 'number') {
+                    rtpLevel = sources[0].audioLevel;
+                }
+            }
+        } catch (e) {}
+
+        const now = Date.now();
+        if (rtpLevel > 0.015) {
+            lastRemoteActive = now;
+        }
+
+        const peerUser = state.allUsers[peerId];
+        const isPeerMuted = peerUser ? Boolean(peerUser.is_muted || peerUser.is_deafened || peerUser.is_server_muted) : false;
+        const isSpeaking = !isPeerMuted && ((now - lastRemoteActive < 280) || Boolean(peerUser && peerUser.is_speaking));
+        updateUserCardSpeaking(peerId, isSpeaking);
+
+        setTimeout(checkRemote, 90);
     }
+    checkRemote();
 }
 
 async function handleSignalMessage(senderId, data) {
@@ -2413,11 +2499,11 @@ async function handleSignalMessage(senderId, data) {
         createPeerConnection(senderId, false);
         peer = state.peers[senderId];
     }
-    const pc = peer.pc;
+    let pc = peer.pc;
 
     try {
         if (data.type === 'offer') {
-            // Eğer teklif çakışması varsa güvenle rollback yap
+            // Eğer teklif çakışması (Glare) varsa güvenle rollback yap
             if (pc.signalingState !== 'stable') {
                 try {
                     await pc.setLocalDescription({ type: 'rollback' });
@@ -2433,7 +2519,8 @@ async function handleSignalMessage(senderId, data) {
                 removePeer(senderId, false);
                 createPeerConnection(senderId, false);
                 peer = state.peers[senderId];
-                await peer.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                pc = peer.pc;
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
             }
 
             // Bekleyen ICE adaylarını boşalt
@@ -4407,7 +4494,6 @@ function switchToRoomUI() {
     el.dockAvatar.style.backgroundColor = state.avatarColor;
 
     renderVoiceChannelsUI();
-    initGlobalMediaKeyAndAutoPipHook().catch(() => {});
 
     // Mobilde başlangıçta ses odası ana görünüm olarak gelsin, çekmece ve sohbet kapalı olsun
     if (window.innerWidth <= 768) {
@@ -6364,6 +6450,12 @@ function initEventListeners() {
             setVadThreshold(e.target.value);
         });
     }
+    document.querySelectorAll('.ng-preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const val = parseInt(btn.getAttribute('data-threshold')) || 15;
+            setVadThreshold(val);
+        });
+    });
 
     // Mikrofon Giriş Aygıtı Seçimi (Hem Ayarlar Modalı hem Lobi)
     const handleMicChange = async (newDeviceId) => {
@@ -6807,7 +6899,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Service Worker Kaydı (PWA & Çevrimdışı Önbellek)
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=20261117_1').then((reg) => {
+        navigator.serviceWorker.register('/sw.js?v=20261118_1').then((reg) => {
             console.log('PWA ServiceWorker devrede:', reg.scope);
         }).catch((err) => {
             console.log('ServiceWorker kayıt detayı:', err);
