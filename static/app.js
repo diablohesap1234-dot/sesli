@@ -26,7 +26,8 @@ const state = {
     inputMode: 'vad', // 'vad' (Açık Mikrofon) veya 'ptt' (Bas-Konuş)
     pttKey: 'Space',
     isPttPressed: false,
-    vadThreshold: 20, // 0 - 100
+    vadThreshold: Math.max(1, Math.min(90, parseInt(localStorage.getItem('agalar_vad_threshold')) || 20)), // 1 - 90
+    vadGateGain: null,
     isSpeaking: false,
     lastSpokeTime: 0,
     selectedAudioInput: localStorage.getItem('agalar_selected_mic') || '',
@@ -213,7 +214,11 @@ const el = {
     speakerDeviceCount: document.getElementById('speaker-device-count'),
     speakerSupportHint: document.getElementById('speaker-support-hint'),
     settingsMicMeterFill: document.getElementById('settings-mic-meter-fill'),
+    settingsMicThresholdMarker: document.getElementById('settings-mic-threshold-marker'),
     settingsMicTestVal: document.getElementById('settings-mic-test-val'),
+    lobbyMicThresholdMarker: document.getElementById('lobby-mic-threshold-marker'),
+    lobbySliderMicThreshold: document.getElementById('lobby-slider-mic-threshold'),
+    lobbyThresholdVal: document.getElementById('lobby-threshold-val'),
     btnDockSettings: document.getElementById('btn-dock-settings'),
     selectInputMode: document.getElementById('select-input-mode'),
     sliderMicThreshold: document.getElementById('slider-mic-threshold'),
@@ -783,17 +788,11 @@ async function initLobbyMicrophonePreview() {
                 return;
             }
 
-            dataArray.fill(128);
-            analyser.getByteTimeDomainData(dataArray);
-            let maxDelta = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-                const delta = Math.abs(dataArray[i] - 128);
-                if (delta > maxDelta) maxDelta = delta;
-            }
-            // Konuşma ve nefes hassasiyeti için çarpan
-            const percent = Math.min(100, Math.round((maxDelta / 128) * 100 * 3));
+            const percent = computeMicVolumePercent(analyser, dataArray);
+            const isPassing = percent >= state.vadThreshold;
             if (el.micMeterFill) {
                 el.micMeterFill.style.width = percent + "%";
+                el.micMeterFill.classList.toggle('gated', percent > 0 && !isPassing);
             }
 
             requestAnimationFrame(updateMeter);
@@ -1014,15 +1013,119 @@ async function testSpeakerOutput() {
     }
 }
 
+function computeMicVolumePercent(analyser, dataArray) {
+    if (!analyser || !dataArray) return 0;
+    dataArray.fill(128);
+    analyser.getByteTimeDomainData(dataArray);
+    let sumSq = 0;
+    let maxDelta = 0;
+    const len = dataArray.length;
+    for (let i = 0; i < len; i++) {
+        const delta = Math.abs(dataArray[i] - 128);
+        if (delta > maxDelta) maxDelta = delta;
+        sumSq += delta * delta;
+    }
+    const rms = Math.sqrt(sumSq / len);
+    // RMS + Peak hibrit ölçümü: konuşma enerjisini 0-100 aralığına dengeli ve hassas haritalar
+    const weighted = (rms * 0.65) + (maxDelta * 0.35);
+    return Math.min(100, Math.round((weighted / 128) * 100 * 3.4));
+}
+
+function setVadThreshold(val) {
+    const clamped = Math.max(1, Math.min(90, parseInt(val) || 20));
+    state.vadThreshold = clamped;
+    try {
+        localStorage.setItem('agalar_vad_threshold', String(clamped));
+    } catch (e) {}
+
+    if (el.sliderMicThreshold && parseInt(el.sliderMicThreshold.value) !== clamped) {
+        el.sliderMicThreshold.value = clamped;
+    }
+    if (el.lobbySliderMicThreshold && parseInt(el.lobbySliderMicThreshold.value) !== clamped) {
+        el.lobbySliderMicThreshold.value = clamped;
+    }
+    if (el.thresholdVal) {
+        el.thresholdVal.textContent = `${clamped}%`;
+    }
+    if (el.lobbyThresholdVal) {
+        el.lobbyThresholdVal.textContent = `${clamped}%`;
+    }
+    if (el.settingsMicThresholdMarker) {
+        el.settingsMicThresholdMarker.style.left = `${clamped}%`;
+    }
+    if (el.lobbyMicThresholdMarker) {
+        el.lobbyMicThresholdMarker.style.left = `${clamped}%`;
+    }
+}
+
+let gateCloseTrackTimeout = null;
+function applyMicGateState(isOpen) {
+    const rawEnabled = !state.isMuted && !state.isDeafened && !state.isServerMuted;
+    if (state.rawMicStream) {
+        const rawTrack = state.rawMicStream.getAudioTracks()[0];
+        if (rawTrack && rawTrack.enabled !== rawEnabled) {
+            rawTrack.enabled = rawEnabled;
+        }
+    }
+
+    const canTransmit = rawEnabled && Boolean(isOpen);
+
+    if (state.vadGateGain && state.audioCtx) {
+        const now = state.audioCtx.currentTime;
+        const targetGain = canTransmit ? 1.0 : 0.0;
+        const timeConstant = canTransmit ? 0.007 : 0.025; // 7ms hızlı açılış, 25ms yumuşak kapanış
+        try {
+            state.vadGateGain.gain.setTargetAtTime(targetGain, now, timeConstant);
+        } catch (e) {
+            state.vadGateGain.gain.value = targetGain;
+        }
+    }
+
+    if (state.localStream && state.localStream !== state.rawMicStream) {
+        const outTrack = state.localStream.getAudioTracks()[0];
+        if (outTrack) {
+            if (canTransmit) {
+                if (gateCloseTrackTimeout) {
+                    clearTimeout(gateCloseTrackTimeout);
+                    gateCloseTrackTimeout = null;
+                }
+                if (!outTrack.enabled) outTrack.enabled = true;
+            } else {
+                if (!gateCloseTrackTimeout) {
+                    gateCloseTrackTimeout = setTimeout(() => {
+                        gateCloseTrackTimeout = null;
+                        const stillClosed = !(!state.isMuted && !state.isDeafened && !state.isServerMuted && (state.inputMode === 'ptt' ? state.isPttPressed : state.isSpeaking));
+                        if (stillClosed && state.localStream && state.localStream !== state.rawMicStream) {
+                            const t = state.localStream.getAudioTracks()[0];
+                            if (t) t.enabled = false;
+                        }
+                    }, 65);
+                }
+            }
+        }
+    } else if (state.localStream) {
+        const outTrack = state.localStream.getAudioTracks()[0];
+        if (outTrack) {
+            outTrack.enabled = canTransmit;
+        }
+    }
+}
+
 function startSettingsMicPreview() {
     stopSettingsMicPreview();
     if (!el.settingsModal || el.settingsModal.classList.contains('hidden')) return;
+
+    setVadThreshold(state.vadThreshold);
 
     // Eğer mikrofon kapalı veya açılmamışsa başlatmayı dene
     if (!state.localStream && state.ws && state.ws.readyState === WebSocket.OPEN) {
         setupLocalAudioStream().catch(() => {});
     } else if (!state.localStream && !lobbyPreviewStream) {
         initLobbyMicrophonePreview().catch(() => {});
+    }
+
+    if (state.audioCtx && state.audioCtx.state === 'suspended') {
+        state.audioCtx.resume().catch(() => {});
     }
 
     const dataArray = new Uint8Array(512);
@@ -1034,32 +1137,31 @@ function startSettingsMicPreview() {
             return;
         }
 
-        const activeAnalyser = (state.analyser && state.localStream)
+        const activeAnalyser = (state.analyser && (state.rawMicStream || state.localStream))
             ? state.analyser
             : (lobbyAnalyser && lobbyPreviewStream ? lobbyAnalyser : null);
 
         if (activeAnalyser) {
-            dataArray.fill(128);
-            activeAnalyser.getByteTimeDomainData(dataArray);
-            let maxDelta = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-                const delta = Math.abs(dataArray[i] - 128);
-                if (delta > maxDelta) maxDelta = delta;
-            }
-            const percent = Math.min(100, Math.round((maxDelta / 128) * 100 * 3));
+            const percent = computeMicVolumePercent(activeAnalyser, dataArray);
+            const isPassing = state.inputMode === 'ptt' ? state.isPttPressed : (percent >= state.vadThreshold);
+
             if (el.settingsMicMeterFill) {
                 el.settingsMicMeterFill.style.width = percent + "%";
+                el.settingsMicMeterFill.classList.toggle('gated', percent > 0 && !isPassing);
             }
             if (el.settingsMicTestVal) {
                 if (state.isMuted && state.localStream) {
-                    el.settingsMicTestVal.textContent = "Susturuldu";
+                    el.settingsMicTestVal.textContent = "🔇 Susturuldu";
                     el.settingsMicTestVal.style.color = "var(--danger)";
-                } else if (percent > 8) {
-                    el.settingsMicTestVal.textContent = `${percent}%`;
+                } else if (percent <= 2) {
+                    el.settingsMicTestVal.textContent = "Sessiz (0%)";
+                    el.settingsMicTestVal.style.color = "var(--text-secondary)";
+                } else if (isPassing) {
+                    el.settingsMicTestVal.textContent = `🎙️ İletiliyor (${percent}%)`;
                     el.settingsMicTestVal.style.color = "var(--success)";
                 } else {
-                    el.settingsMicTestVal.textContent = "Sessiz";
-                    el.settingsMicTestVal.style.color = "var(--text-secondary)";
+                    el.settingsMicTestVal.textContent = `🛡️ Kesildi (${percent}%)`;
+                    el.settingsMicTestVal.style.color = "var(--warning)";
                 }
             }
         } else {
@@ -1087,7 +1189,7 @@ function stopSettingsMicPreview() {
 }
 
 // ============================================================================
-// 3. YEREL SES YÖNETİMİ, VOICE FX (SES DEĞİŞTİRİCİ) & VAD
+// 3. YEREL SES YÖNETİMİ, VOICE FX (SES DEĞİŞTİRİCİ) & GÜRÜLTÜ KAPISI (NOISE GATE / VAD)
 // ============================================================================
 function makeDistortionCurve(amount = 40) {
     const k = typeof amount === 'number' ? amount : 40;
@@ -1120,22 +1222,37 @@ function rebuildVoiceFxStream() {
 
     let finalStream = state.rawMicStream;
 
-    if (ctx && (mode !== 'normal' || boost !== 1.0)) {
+    if (ctx) {
         try {
             const rawSource = ctx.createMediaStreamSource(state.rawMicStream);
+
+            // 1. Dip Gürültü & Uğultu Kesici High-Pass Filtre (85 Hz altı masa darbesi / fan uğultusunu temizler)
+            const rumbleFilter = ctx.createBiquadFilter();
+            rumbleFilter.type = 'highpass';
+            rumbleFilter.frequency.value = 85;
+            rawSource.connect(rumbleFilter);
+
             const boostGain = ctx.createGain();
             boostGain.gain.value = boost;
+
+            // 2. Canlı Gürültü Kapısı (Noise Gate) Gain Düğümü: Eşik altındaki sesleri %100 keser
+            const vadGateGain = ctx.createGain();
+            const initiallyOpen = !state.isMuted && !state.isDeafened && !state.isServerMuted && (state.inputMode === 'ptt' ? state.isPttPressed : state.isSpeaking);
+            vadGateGain.gain.value = initiallyOpen ? 1.0 : 0.0;
+            state.vadGateGain = vadGateGain;
+
+            // 3. Pre-Gate Analyser: Gürültü kapısından ÖNCE bağlanır ki kapı kapalıyken bile konuştuğunuzu anında algılasın
+            const preGateAnalyser = ctx.createAnalyser();
+            preGateAnalyser.fftSize = 512;
+            state.analyser = preGateAnalyser;
+
             const dest = ctx.createMediaStreamDestination();
-            const cleanupNodes = [rawSource, boostGain];
+            const cleanupNodes = [rawSource, rumbleFilter, boostGain, vadGateGain, preGateAnalyser];
             const cleanupOscs = [];
 
-            let lastNode = rawSource;
+            let lastNode = rumbleFilter;
 
             if (mode === 'studio') {
-                const hp = ctx.createBiquadFilter();
-                hp.type = 'highpass';
-                hp.frequency.value = 85;
-
                 const lowWarmth = ctx.createBiquadFilter();
                 lowWarmth.type = 'lowshelf';
                 lowWarmth.frequency.value = 180;
@@ -1151,12 +1268,11 @@ function rebuildVoiceFxStream() {
                 comp.knee.value = 12;
                 comp.ratio.value = 4;
 
-                lastNode.connect(hp);
-                hp.connect(lowWarmth);
+                lastNode.connect(lowWarmth);
                 lowWarmth.connect(highPresence);
                 highPresence.connect(comp);
                 lastNode = comp;
-                cleanupNodes.push(hp, lowWarmth, highPresence, comp);
+                cleanupNodes.push(lowWarmth, highPresence, comp);
             } else if (mode === 'robot') {
                 // Ring Modulator Robotik Ses
                 const ringGain = ctx.createGain();
@@ -1219,8 +1335,11 @@ function rebuildVoiceFxStream() {
                 cleanupNodes.push(hp, lp, shaper);
             }
 
+            // Zincir: lastNode -> boostGain -> preGateAnalyser (ölçüm) & vadGateGain (gürültü kapısı) -> dest (WebRTC)
             lastNode.connect(boostGain);
-            boostGain.connect(dest);
+            boostGain.connect(preGateAnalyser);
+            boostGain.connect(vadGateGain);
+            vadGateGain.connect(dest);
             finalStream = dest.stream;
 
             state.fxCleanup = () => {
@@ -1228,29 +1347,24 @@ function rebuildVoiceFxStream() {
                 cleanupNodes.forEach(n => { try { n.disconnect(); } catch(e) {} });
             };
         } catch (fxErr) {
-            console.warn("VoiceFX oluşturulamadı, ham mikrofon kullanılıyor:", fxErr);
+            console.warn("Ses işleme zinciri oluşturulamadı, ham mikrofon kullanılıyor:", fxErr);
             finalStream = state.rawMicStream;
+            try {
+                const analyserSource = ctx.createMediaStreamSource(state.rawMicStream);
+                state.analyser = ctx.createAnalyser();
+                state.analyser.fftSize = 512;
+                analyserSource.connect(state.analyser);
+            } catch (e) {}
         }
     }
 
     state.localStream = finalStream;
 
-    // Web Audio Analyser (Konuşma algılama ve seviye çubuğu için)
-    if (ctx) {
-        try {
-            const analyserSource = ctx.createMediaStreamSource(state.localStream);
-            state.analyser = ctx.createAnalyser();
-            state.analyser.fftSize = 512;
-            analyserSource.connect(state.analyser);
-        } catch (e) {}
-    }
+    // Ham mikrofonu açık tut (analyser ölçümü için), giden track'i ise gürültü kapısına bağla
+    const isGateCurrentlyOpen = state.inputMode === 'ptt' ? state.isPttPressed : state.isSpeaking;
+    applyMicGateState(isGateCurrentlyOpen);
 
     const audioTrack = state.localStream.getAudioTracks()[0];
-    const rawTrack = state.rawMicStream.getAudioTracks()[0];
-    const shouldEnable = !state.isMuted && !state.isDeafened && !(state.inputMode === 'ptt' && !state.isPttPressed);
-
-    if (rawTrack) rawTrack.enabled = shouldEnable;
-    if (audioTrack) audioTrack.enabled = shouldEnable;
 
     // Mevcut WebRTC bağlantılarındaki ses track'lerini kesintisiz değiştir
     Object.entries(state.peers).forEach(async ([peerId, peer]) => {
@@ -1375,15 +1489,16 @@ function startVoiceActivityDetection() {
 
     function scheduleNext() {
         if (document.hidden) {
-            // Pencere arkadayken düşük frekansta (100ms) çalışıp CPU ve RAM harcamaz
-            state.micLevelAnimationId = setTimeout(checkLevel, 100);
+            // Pencere arkadayken 45ms'de bir çalışır (oyundayken bile gürültü kapısı gecikmesiz açılır)
+            state.micLevelAnimationId = setTimeout(checkLevel, 45);
         } else {
             state.micLevelAnimationId = requestAnimationFrame(checkLevel);
         }
     }
 
     function checkLevel() {
-        if (!state.localStream || state.isMuted || state.isDeafened) {
+        if (!state.localStream || state.isMuted || state.isDeafened || state.isServerMuted) {
+            applyMicGateState(false);
             setSpeakingState(false);
             scheduleNext();
             return;
@@ -1391,36 +1506,38 @@ function startVoiceActivityDetection() {
 
         // Bas-konuş modu
         if (state.inputMode === 'ptt') {
+            applyMicGateState(state.isPttPressed);
             setSpeakingState(state.isPttPressed);
             scheduleNext();
             return;
         }
 
-        // AudioContext askıdaysa konuşma tetikleme
+        // AudioContext askıdaysa uyandırmayı dene
         if (!state.audioCtx || state.audioCtx.state === 'suspended') {
+            if (state.audioCtx) state.audioCtx.resume().catch(() => {});
+            applyMicGateState(false);
             setSpeakingState(false);
             scheduleNext();
             return;
         }
 
-        // Açık mikrofon dalga boyu VAD modu (önce diziyi sessizlikle doldur)
-        dataArray.fill(128);
-        state.analyser.getByteTimeDomainData(dataArray);
-        let maxDelta = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-            const delta = Math.abs(dataArray[i] - 128);
-            if (delta > maxDelta) maxDelta = delta;
-        }
-        const levelPercent = (maxDelta / 128) * 100;
+        // Açık mikrofon dalga boyu & Gürültü Kapısı (Noise Gate) kontrolü
+        // Seviye çubuğuyla birebir aynı 0-100 ölçeğini kullanır
+        const levelPercent = computeMicVolumePercent(state.analyser, dataArray);
 
-        const isLouder = levelPercent > (state.vadThreshold * 0.4);
+        // Histerezis: Açılmak için vadThreshold'u geçmeli, açıkken düşmek için vadThreshold - 3 altına inmeli
+        const threshold = state.vadThreshold;
+        const effectiveThreshold = state.isSpeaking ? Math.max(1, threshold - 3) : threshold;
+        const isLouder = levelPercent >= effectiveThreshold;
         const now = Date.now();
 
         if (isLouder) {
             state.lastSpokeTime = now;
+            applyMicGateState(true);
             setSpeakingState(true);
-        } else if (now - state.lastSpokeTime > 300) {
-            // 300ms ses eşiğinin altındaysa konuşmayı kes
+        } else if (now - state.lastSpokeTime > 260) {
+            // 260ms ses eşiğinin altındaysa gürültü kapısını kapat ve karşıya giden sesi tamamen kes
+            applyMicGateState(false);
             setSpeakingState(false);
         }
 
@@ -2265,22 +2382,22 @@ function monitorRemoteStreamVolume(peerId, stream) {
 
         const dataArray = new Uint8Array(analyser.fftSize);
         dataArray.fill(128); // 128 = Ses dalgasında mutlak sessizlik
+        let lastRemoteActive = 0;
 
         function checkRemote() {
             if (!state.peers[peerId]) return;
             if (state.audioCtx && state.audioCtx.state === 'suspended') {
-                updateUserCardSpeaking(peerId, false);
                 requestAnimationFrame(checkRemote);
                 return;
             }
-            dataArray.fill(128);
-            analyser.getByteTimeDomainData(dataArray);
-            let maxDelta = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-                const delta = Math.abs(dataArray[i] - 128);
-                if (delta > maxDelta) maxDelta = delta;
+            const pct = computeMicVolumePercent(analyser, dataArray);
+            const now = Date.now();
+            if (pct >= 4) {
+                lastRemoteActive = now;
             }
-            const isSpeaking = maxDelta > 15;
+            const peerUser = state.allUsers[peerId];
+            const isPeerMuted = peerUser ? Boolean(peerUser.is_muted || peerUser.is_deafened || peerUser.is_server_muted) : false;
+            const isSpeaking = !isPeerMuted && ((now - lastRemoteActive < 240) || Boolean(peerUser && peerUser.is_speaking));
             updateUserCardSpeaking(peerId, isSpeaking);
             requestAnimationFrame(checkRemote);
         }
@@ -2477,8 +2594,8 @@ function applyServerMuteState(isMuted) {
     state.isServerMuted = isMuted;
     if (isMuted) {
         state.isMuted = true;
-        const track = state.localStream?.getAudioTracks()[0];
-        if (track) track.enabled = false;
+        applyMicGateState(false);
+        setSpeakingState(false);
         if (el.btnToggleMic) {
             el.btnToggleMic.classList.add('active-danger');
             el.btnToggleMic.title = "Sunucu tarafından susturuldunuz (Mikrofon kilitli)";
@@ -3746,16 +3863,14 @@ async function toggleMute() {
 
     SoundEffects.toggleMute(state.isMuted);
 
-    const track = state.localStream?.getAudioTracks()[0];
-    if (track) {
-        track.enabled = !state.isMuted && !state.isDeafened;
-    }
-
     if (state.isMuted) {
+        applyMicGateState(false);
+        setSpeakingState(false);
         el.btnToggleMic.classList.add('active-danger');
         el.micIcon.textContent = "🔇";
         el.micLabel.textContent = "Susturuldu";
     } else {
+        applyMicGateState(state.inputMode === 'ptt' ? state.isPttPressed : false);
         el.btnToggleMic.classList.remove('active-danger');
         el.micIcon.textContent = "🎙️";
         el.micLabel.textContent = "Mikrofon";
@@ -3771,6 +3886,8 @@ function toggleDeafen() {
     // Kulaklığı kapatınca mikrofon da otomatik kapanır (Discord mantığı)
     if (state.isDeafened) {
         state.isMuted = true;
+        applyMicGateState(false);
+        setSpeakingState(false);
         el.btnToggleDeafen.classList.add('active-danger');
         el.btnToggleMic.classList.add('active-danger');
         el.deafenIcon.textContent = "🔕";
@@ -3784,6 +3901,7 @@ function toggleDeafen() {
         });
     } else {
         state.isMuted = false;
+        applyMicGateState(state.inputMode === 'ptt' ? state.isPttPressed : false);
         el.btnToggleDeafen.classList.remove('active-danger');
         el.btnToggleMic.classList.remove('active-danger');
         el.deafenIcon.textContent = "🎧";
@@ -3795,11 +3913,6 @@ function toggleDeafen() {
         Object.values(state.peers).forEach(peer => {
             if (peer.audioEl) peer.audioEl.muted = false;
         });
-    }
-
-    const track = state.localStream?.getAudioTracks()[0];
-    if (track) {
-        track.enabled = !state.isMuted && !state.isDeafened;
     }
 
     updateUserCardState(state.myId, state.isMuted, state.isDeafened, false);
@@ -3829,8 +3942,7 @@ function setInputMode(mode) {
         el.pttKeySetting.style.display = 'flex';
 
         // Mikrofonu varsayılan olarak sustur
-        const track = state.localStream?.getAudioTracks()[0];
-        if (track) track.enabled = false;
+        applyMicGateState(false);
         setSpeakingState(false);
     } else {
         el.btnPttMode.classList.remove('ptt-active');
@@ -3839,10 +3951,7 @@ function setInputMode(mode) {
         el.pttKeyBadge.classList.add('hidden');
         el.pttKeySetting.style.display = 'none';
 
-        const track = state.localStream?.getAudioTracks()[0];
-        if (track && !state.isMuted && !state.isDeafened) {
-            track.enabled = true;
-        }
+        applyMicGateState(state.isSpeaking);
     }
 }
 
@@ -6247,8 +6356,12 @@ function initEventListeners() {
 
     if (el.sliderMicThreshold) {
         el.sliderMicThreshold.addEventListener('input', (e) => {
-            state.vadThreshold = parseInt(e.target.value);
-            if (el.thresholdVal) el.thresholdVal.textContent = `${state.vadThreshold}%`;
+            setVadThreshold(e.target.value);
+        });
+    }
+    if (el.lobbySliderMicThreshold) {
+        el.lobbySliderMicThreshold.addEventListener('input', (e) => {
+            setVadThreshold(e.target.value);
         });
     }
 
@@ -6347,10 +6460,9 @@ function initEventListeners() {
 
         // Bas-Konuş basıldı
         if (state.inputMode === 'ptt' && (e.code === state.pttKey || e.key.toUpperCase() === state.pttKey)) {
-            if (!state.isPttPressed && !state.isMuted && !state.isDeafened) {
+            if (!state.isPttPressed && !state.isMuted && !state.isDeafened && !state.isServerMuted) {
                 state.isPttPressed = true;
-                const track = state.localStream?.getAudioTracks()[0];
-                if (track) track.enabled = true;
+                applyMicGateState(true);
                 setSpeakingState(true);
             }
         }
@@ -6373,8 +6485,7 @@ function initEventListeners() {
         if (state.inputMode === 'ptt' && (e.code === state.pttKey || e.key.toUpperCase() === state.pttKey)) {
             if (state.isPttPressed) {
                 state.isPttPressed = false;
-                const track = state.localStream?.getAudioTracks()[0];
-                if (track) track.enabled = false;
+                applyMicGateState(false);
                 setSpeakingState(false);
             }
         }
@@ -6617,6 +6728,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Önce tüm buton ve form dinleyicilerini hemen bağla (Sayfa yenilenmesini /? sorununu kesin önler)
     applyTheme(state.theme);
+    setVadThreshold(state.vadThreshold);
     if (state.customStatus) {
         setCustomStatus(state.customStatus);
     }
@@ -6695,7 +6807,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Service Worker Kaydı (PWA & Çevrimdışı Önbellek)
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=20261023_9').then((reg) => {
+        navigator.serviceWorker.register('/sw.js?v=20261117_1').then((reg) => {
             console.log('PWA ServiceWorker devrede:', reg.scope);
         }).catch((err) => {
             console.log('ServiceWorker kayıt detayı:', err);
