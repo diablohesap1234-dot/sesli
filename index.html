@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Agalar">
     <link rel="apple-touch-icon" href="/icon-192.png">
-    <link rel="stylesheet" href="/static/style.css?v=20261023_9">
+    <link rel="stylesheet" href="/static/style.css?v=20261117_1">
 </head>
 <body>
     <!-- MASAÜSTÜ SİNEMATİK AÇILIŞ ANİMASYONU (SPLASH SCREEN) -->
@@ -210,10 +210,16 @@
                                 </div>
                             </div>
 
-                            <div class="mic-meter-bar">
+                            <div class="mic-meter-bar" title="Beyaz çizgi: Gürültü Engelleme Eşiği">
                                 <div id="mic-meter-fill" class="mic-meter-fill"></div>
+                                <div id="lobby-mic-threshold-marker" class="mic-threshold-marker" style="left: 20%;"></div>
                             </div>
-                            <p class="mic-tip">Odaya girmeden önce mikrofonunu ve hoparlörünü seçip test edebilirsin.</p>
+                            <div class="lobby-threshold-row">
+                                <label for="lobby-slider-mic-threshold">🛡️ Gürültü Engelleme Eşiği:</label>
+                                <input type="range" id="lobby-slider-mic-threshold" min="1" max="90" value="20" class="form-range">
+                                <span id="lobby-threshold-val" class="lobby-threshold-val">20%</span>
+                            </div>
+                            <p class="mic-tip">Çizginin altındaki arka plan/klavye sesleri kesilir, sadece çizgiyi geçen sesiniz iletilir.</p>
                         </div>
 
                     <!-- Dış İnternet Tünel Paylaşımı (Bat gerektirmez) -->
@@ -910,12 +916,24 @@
                         <select id="select-mic-device" class="form-select">
                             <option value="">Varsayılan Mikrofon</option>
                         </select>
-                        <div class="settings-mic-test-wrap" title="Mikrofon Ses Seviyesi">
+                        <div class="settings-mic-test-wrap" title="Mikrofon Ses Seviyesi ve Gürültü Eşiği">
                             <div class="settings-mic-meter-bar">
                                 <div id="settings-mic-meter-fill" class="settings-mic-meter-fill"></div>
+                                <div id="settings-mic-threshold-marker" class="mic-threshold-marker" style="left: 20%;"></div>
                             </div>
                             <span id="settings-mic-test-val" class="settings-mic-test-val">Sessiz</span>
                         </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label-row">
+                            <label for="slider-mic-threshold">🛡️ Gürültü Engelleme & Hassasiyet Eşiği (Noise Gate)</label>
+                            <span id="threshold-val" class="setting-count-badge">20%</span>
+                        </div>
+                        <div class="slider-row">
+                            <input type="range" id="slider-mic-threshold" min="1" max="90" value="20" class="form-range">
+                        </div>
+                        <p class="setting-hint">Üstteki çubukta bulunan <strong>beyaz çizginin</strong> altındaki klavye, nefes ve ortam gürültüleri tamamen kesilir; sadece eşiği geçen sesiniz karşıya iletilir.</p>
                     </div>
 
                     <div class="setting-item">
@@ -947,14 +965,6 @@
                         <div class="ptt-key-selector">
                             <span id="ptt-key-name" class="key-tag">Space</span>
                             <button id="btn-change-ptt-key" class="btn-secondary">Tuşu Değiştir</button>
-                        </div>
-                    </div>
-
-                    <div class="setting-item">
-                        <label>Mikrofon Hassasiyeti Eşiği</label>
-                        <div class="slider-row">
-                            <input type="range" id="slider-mic-threshold" min="5" max="60" value="20" class="form-range">
-                            <span id="threshold-val">20%</span>
                         </div>
                     </div>
 
@@ -1235,6 +1245,6 @@
     </div>
 
     <!-- SESLERİ OYNATMAK İÇİN SENTEZLEME YAZILIMI APP.JS İÇİNDE BULUNMAKTADIR -->
-    <script src="/static/app.js?v=20261023_9"></script>
+    <script src="/static/app.js?v=20261117_1"></script>
 </body>
 </html>
