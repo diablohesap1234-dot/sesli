@@ -5685,6 +5685,81 @@ body.steam-overlay-mode .user-card.speaking {
     box-shadow: 0 0 24px rgba(16, 185, 129, 0.45) !important;
 }
 
+/* ============================================================================
+   GÜRÜLTÜ KAPISI HIZLI MOD BUTONLARI & GENEL ULTRA-MODERN ARAYÜZ CİLASI
+   ============================================================================ */
+.noise-gate-presets {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.ng-preset-btn {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ng-preset-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+.ng-preset-btn.active {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.24), rgba(59, 130, 246, 0.22));
+    border-color: rgba(16, 185, 129, 0.65);
+    color: #a7f3d0;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.22);
+}
+
+/* Konuşurken Alt Dock Mikrofon & Avatar Canlı Yeşil Işıltısı */
+.dock-btn.speaking-glow {
+    border-color: #10b981 !important;
+    background: rgba(16, 185, 129, 0.18) !important;
+    box-shadow: 0 0 18px rgba(16, 185, 129, 0.38) !important;
+}
+
+.dock-avatar.speaking-glow {
+    box-shadow: 0 0 0 2.5px #10b981, 0 0 14px rgba(16, 185, 129, 0.6) !important;
+}
+
+/* Kullanıcı Kartları Modern Derinlik & Konuşma Efekti İyileştirmesi */
+.user-card {
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.055) 0%, rgba(15, 20, 34, 0.72) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px);
+}
+
+.user-card:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.42), 0 0 22px var(--accent-glow);
+}
+
+.user-card.speaking {
+    border-color: #10b981 !important;
+    background: linear-gradient(160deg, rgba(16, 185, 129, 0.14) 0%, rgba(15, 23, 42, 0.82) 100%) !important;
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.45), 0 12px 34px rgba(16, 185, 129, 0.26) !important;
+}
+
+@media (max-width: 560px) {
+    .noise-gate-presets {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+
 
 
 
