@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Agalar">
     <link rel="apple-touch-icon" href="/icon-192.png">
-    <link rel="stylesheet" href="/static/style.css?v=20261118_1">
+    <link rel="stylesheet" href="/static/style.css?v=20261118_2">
 </head>
 <body>
     <!-- MASAÜSTÜ SİNEMATİK AÇILIŞ ANİMASYONU (SPLASH SCREEN) -->
@@ -312,9 +312,13 @@
                         <span class="ping-dot"></span>
                         <span id="ping-text">-- ms</span>
                     </div>
+                    <div class="call-timer-pill" id="call-timer-pill" title="Odadaki Aktif Süre">
+                        <span>⏱️</span>
+                        <span id="call-timer-text">00:00</span>
+                    </div>
                     <button type="button" id="btn-theme-cycle" class="btn-nav-feature" title="Arayüz Temasını Değiştir (Gece / Siber Mor / Zümrüt / Kızıl)">
                         <span id="theme-icon">🌌</span>
-                        <span id="theme-label">Tema: Gece</span>
+                        <span id="theme-label">Gece Mavisi</span>
                     </button>
                     <button type="button" id="btn-nav-pip-overlay" class="btn-nav-feature btn-nav-overlay-highlight" title="Oyundayken Üstte Kalan Şeffaf Mini Ses Penceresi Aç (PiP / Steam Overlay)">
                         <span>🕹️</span>
@@ -410,6 +414,18 @@
                             </button>
                             <div class="channel-users-list" id="ch-users-channel-5"></div>
                         </div>
+                    </div>
+
+                    <!-- SOL PANEL ALT SES SAĞLIĞI VE HIZLI ARAÇLAR -->
+                    <div class="sidebar-footer-card" id="sidebar-audio-panel">
+                        <div class="sfc-head">
+                            <span class="sfc-title">🛡️ Ses & Gizlilik Durumu</span>
+                            <span id="sfc-voice-badge" class="sfc-badge ok">Canlı</span>
+                        </div>
+                        <div id="sfc-mute-summary" class="sfc-summary">Mikrofon ve kulaklık aktif</div>
+                        <button type="button" id="btn-reset-peer-volumes" class="sfc-btn" title="Tüm arkadaşların sesini %100'e sıfırla">
+                            ↺ Üye Seslerini Sıfırla (%100)
+                        </button>
                     </div>
                 </aside>
                 <div id="channels-backdrop" class="channels-backdrop hidden"></div>
@@ -565,6 +581,10 @@
                             <button type="button" id="btn-toggle-status-drawer" class="btn-vcb-tool" title="Ne Oynadığını / Durumunu Belirle">
                                 <span>🎮</span>
                                 <span class="vcb-tool-text" id="status-btn-label">Durum Belirle</span>
+                            </button>
+                            <button type="button" id="btn-toggle-poll-drawer" class="btn-vcb-tool" title="Odaya Hızlı Oylama / Anket Aç">
+                                <span>📊</span>
+                                <span class="vcb-tool-text">Anket</span>
                             </button>
                             <button type="button" id="btn-toggle-game-overlay" class="btn-vcb-tool" title="Steam Tarzı Oyun İçi Şeffaf Overlay & Üstte Kalan Mini Pencere (Shift + Tab)">
                                 <span>🕹️</span>
@@ -761,6 +781,33 @@
                         </div>
                     </div>
 
+                    <!-- 5. HIZLI ODA ANKETİ OLUŞTURMA ÇEKMECESİ -->
+                    <div id="poll-drawer" class="feature-drawer hidden">
+                        <div class="feature-drawer-header">
+                            <div class="fd-title">
+                                <span>📊 Hızlı Oda Anketi Başlat</span>
+                                <span class="fd-subtitle">Hangi oyunu oynayacağınızı veya film izleyeceğinizi oylayın</span>
+                            </div>
+                            <button type="button" id="btn-close-poll-drawer" class="btn-fd-close">✕</button>
+                        </div>
+                        <div class="poll-create-form">
+                            <input type="text" id="poll-question-input" class="form-input-text" maxlength="100" placeholder="Anket sorusu (Örn: Bu gece ne oynuyoruz?)">
+                            <div class="poll-options-inputs">
+                                <input type="text" id="poll-opt-1" class="form-input-text" maxlength="45" placeholder="Seçenek 1 (Örn: Valorant)">
+                                <input type="text" id="poll-opt-2" class="form-input-text" maxlength="45" placeholder="Seçenek 2 (Örn: CS2)">
+                                <input type="text" id="poll-opt-3" class="form-input-text" maxlength="45" placeholder="Seçenek 3 (Opsiyonel)">
+                            </div>
+                            <div class="poll-create-actions">
+                                <button type="button" class="btn-secondary poll-quick-template" data-q="Hangi oyunu oynuyoruz?" data-o1="Valorant" data-o2="CS2" data-o3="LoL">🎮 Oyun Anketi</button>
+                                <button type="button" class="btn-secondary poll-quick-template" data-q="Dizi / Film izleyelim mi?" data-o1="Evet, aç yayını! 🍿" data-o2="Biraz daha oyun 🕹️" data-o3="">🍿 Dizi/Film</button>
+                                <button type="button" id="btn-submit-poll" class="btn-primary">📊 Anketi Başlat</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AKTİF CANLI ANKET KARTI -->
+                    <div id="active-poll-banner" class="active-poll-banner hidden"></div>
+
                     <div class="voice-grid" id="voice-grid">
                         <!-- Kullanıcı kartları buraya JavaScript tarafından dinamik eklenecek -->
                     </div>
@@ -804,6 +851,15 @@
                         </div>
                     </div>
 
+                    <!-- YANITLAMA (ALINTI) ÖNİZLEME ÇUBUĞU -->
+                    <div id="chat-reply-bar" class="chat-reply-bar hidden">
+                        <div class="chat-reply-info">
+                            <span class="chat-reply-label">↩️ Yanıtlanıyor: <strong id="chat-reply-author"></strong></span>
+                            <span id="chat-reply-snippet" class="chat-reply-snippet"></span>
+                        </div>
+                        <button type="button" id="btn-cancel-reply" class="btn-cancel-reply" title="Yanıtı İptal Et">✕</button>
+                    </div>
+
                     <!-- GÖRSEL YÜKLEME ÖNİZLEME STRIP'İ -->
                     <div id="image-staging-box" class="image-staging-box hidden">
                         <div class="staging-preview">
@@ -816,7 +872,7 @@
                     <!-- EMOJİ SEÇİCİ POPUP -->
                     <div id="chat-emoji-picker" class="chat-emoji-picker hidden">
                         <div class="emoji-picker-header">
-                            <span class="emoji-picker-title">😀 Emojiler</span>
+                            <span class="emoji-picker-title">😀 Emojiler <small style="opacity:0.6;font-weight:500;">(Shift+Tıkla = Direkt Gönder)</small></span>
                             <button type="button" id="btn-close-emoji" class="emoji-close-btn" title="Kapat">✕</button>
                         </div>
                         <div class="emoji-nav-tabs">
@@ -1257,6 +1313,6 @@
     </div>
 
     <!-- SESLERİ OYNATMAK İÇİN SENTEZLEME YAZILIMI APP.JS İÇİNDE BULUNMAKTADIR -->
-    <script src="/static/app.js?v=20261118_1"></script>
+    <script src="/static/app.js?v=20261118_2"></script>
 </body>
 </html>

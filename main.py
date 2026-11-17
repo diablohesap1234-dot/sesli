@@ -922,102 +922,156 @@ async def download_launcher(url: Optional[str] = None):
         target_url = f"{target_url}{sep}mode=desktop&overlay=1"
     bat_content = f"""@echo off
 chcp 65001 >nul
-title AGALAR SESLI SOHBET - OYUN ICI OVERLAY ASISTANI
+title AGALAR OYUN OVERLAY ASISTANI
 echo =====================================================================
-echo   👑 AGALAR SESLI SOHBET ^& STEAM OYUN ICI OVERLAY BASLATILIYOR...
+echo   AGALAR SESLI SOHBET - STEAM OYUN ICI OVERLAY BASLATILIYOR...
 echo =====================================================================
 echo   [KISAYOLLAR - OYUNDAYKEN CALISIR]
 echo   * Shift + Tab (veya Alt + Q) : Pencereyi Oyunun Ustune Getir / Gizle
-echo   * Alt + G                    : Hayalet Mod (Tıklamalar Oyuna Gecer!)
+echo   * Alt + G                    : Hayalet Mod (Tiklamalar Oyuna Gecer!)
 echo   * Alt + Yukari / Asagi Ok    : Seffaflik Derecesini Ayarla (%%40-%%100)
 echo =====================================================================
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$raw = [System.IO.File]::ReadAllText('%~f0', [System.Text.Encoding]::UTF8); $parts = $raw -split '(?m)^# === PS_START ===\\r?$', 2; if ($parts.Length -gt 1) {{ Invoke-Expression $parts[1] }}"
+exit /b 0
+# === PS_START ===
+$ErrorActionPreference = 'SilentlyContinue'
+$targetUrl = "{target_url}"
 
-:: 1. Tarayiciyi Uygulama Modunda Baslat
-start "" msedge.exe --app="{target_url}" --window-size=440,660 --window-position=30,40 2>nul
-if %errorlevel% neq 0 (
-    start "" chrome.exe --app="{target_url}" --window-size=440,660 --window-position=30,40 2>nul
-)
-if %errorlevel% neq 0 (
-    start "" "{target_url}"
+$candidates = @(
+    "${{env:ProgramFiles(x86)}}\\Microsoft\\Edge\\Application\\msedge.exe",
+    "$env:ProgramFiles\\Microsoft\\Edge\\Application\\msedge.exe",
+    "$env:LOCALAPPDATA\\Microsoft\\Edge\\Application\\msedge.exe",
+    "$env:ProgramFiles\\Google\\Chrome\\Application\\chrome.exe",
+    "${{env:ProgramFiles(x86)}}\\Google\\Chrome\\Application\\chrome.exe",
+    "$env:LOCALAPPDATA\\Google\\Chrome\\Application\\chrome.exe",
+    "$env:ProgramFiles\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
 )
 
-:: 2. Win32 Global Kısayol, Her Zaman Ustte (TopMost) ve Seffaf Overlay Motoru
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-"Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public class Win32Overlay {{
-    [DllImport(\"user32.dll\")] public static extern short GetAsyncKeyState(int vKey);
-    [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();
-    [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    [DllImport(\"user32.dll\")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-    [DllImport(\"user32.dll\")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-    [DllImport(\"user32.dll\")] public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-    [DllImport(\"user32.dll\")] public static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+$browserExe = $candidates | Where-Object {{ $_ -and (Test-Path $_) }} | Select-Object -First 1
+if ($browserExe) {{
+    Write-Host "  [BASLATILIYOR] Tarayici bulundu: $browserExe" -ForegroundColor Cyan
+    Start-Process -FilePath $browserExe -ArgumentList "--app=`"$targetUrl`" --window-size=460,680 --window-position=25,40"
+}} else {{
+    Write-Host "  [BASLATILIYOR] Varsayilan tarayici aciliyor..." -ForegroundColor Cyan
+    Start-Process $targetUrl
 }}
-'@; ^
-$GWL_EXSTYLE = -20; $WS_EX_LAYERED = 0x80000; $WS_EX_TRANSPARENT = 0x20; $LWA_ALPHA = 0x2; ^
-$HWND_TOPMOST = [IntPtr]::new(-1); $SWP_NOMOVE = 0x0002; $SWP_NOSIZE = 0x0001; $SWP_SHOWWINDOW = 0x0040; ^
-$alpha = 225; $visible = $true; $ghost = $false; $targetHwnd = [IntPtr]::Zero; ^
-Write-Host '  [AKTIF] Agalar Oyun Ici Overlay Asistani calisiyor...' -ForegroundColor Green; ^
-while ($true) {{ ^
-    if ($targetHwnd -eq [IntPtr]::Zero) {{ ^
-        $procs = Get-Process | Where-Object {{ $_.MainWindowTitle -like '*AGALAR*' -and $_.MainWindowHandle -ne 0 }}; ^
-        if ($procs) {{ ^
-            $targetHwnd = $procs[0].MainWindowHandle; ^
-            $style = [Win32Overlay]::GetWindowLong($targetHwnd, $GWL_EXSTYLE); ^
-            [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -bor $WS_EX_LAYERED)) | Out-Null; ^
-            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null; ^
-            [Win32Overlay]::SetWindowPos($targetHwnd, $HWND_TOPMOST, 0, 0, 0, 0, ($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)) | Out-Null; ^
-            Write-Host '  [BAGLANDI] Agalar penceresi yakalandi! Seffaf & Her Zaman Ustte modu aktif.' -ForegroundColor Cyan; ^
-        }} ^
-    }} else {{ ^
-        $shift = ([Win32Overlay]::GetAsyncKeyState(0x10) -band 0x8000) -ne 0; ^
-        $tab   = ([Win32Overlay]::GetAsyncKeyState(0x09) -band 0x8000) -ne 0; ^
-        $alt   = ([Win32Overlay]::GetAsyncKeyState(0x12) -band 0x8000) -ne 0; ^
-        $keyQ  = ([Win32Overlay]::GetAsyncKeyState(0x51) -band 0x8000) -ne 0; ^
-        $keyG  = ([Win32Overlay]::GetAsyncKeyState(0x47) -band 0x8000) -ne 0; ^
-        $up    = ([Win32Overlay]::GetAsyncKeyState(0x26) -band 0x8000) -ne 0; ^
-        $down  = ([Win32Overlay]::GetAsyncKeyState(0x28) -band 0x8000) -ne 0; ^
-        if (($shift -and $tab) -or ($alt -and $keyQ)) {{ ^
-            $visible = -not $visible; ^
-            if ($visible) {{ ^
-                [Win32Overlay]::ShowWindow($targetHwnd, 9) | Out-Null; ^
-                [Win32Overlay]::SetWindowPos($targetHwnd, $HWND_TOPMOST, 0, 0, 0, 0, ($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)) | Out-Null; ^
-                [Win32Overlay]::SetForegroundWindow($targetHwnd) | Out-Null; ^
-            }} else {{ ^
-                [Win32Overlay]::ShowWindow($targetHwnd, 6) | Out-Null; ^
-            }} ^
-            Start-Sleep -Milliseconds 350; ^
-        }} ^
-        if ($alt -and $keyG) {{ ^
-            $ghost = -not $ghost; ^
-            $style = [Win32Overlay]::GetWindowLong($targetHwnd, $GWL_EXSTYLE); ^
-            if ($ghost) {{ ^
-                [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -bor $WS_EX_LAYERED -bor $WS_EX_TRANSPARENT)) | Out-Null; ^
-                [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, 165, $LWA_ALPHA) | Out-Null; ^
-                Write-Host '  [HAYALET MOD AÇIK] Tiklamalar oyuna geciyor (Alt+G ile kapatilir)' -ForegroundColor Yellow; ^
-            }} else {{ ^
-                [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -band (-bnot $WS_EX_TRANSPARENT))) | Out-Null; ^
-                [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null; ^
-                Write-Host '  [HAYALET MOD KAPALI] Pencere tekrar tiklanabilir' -ForegroundColor Green; ^
-            }} ^
-            Start-Sleep -Milliseconds 350; ^
-        }} ^
-        if ($alt -and $up) {{ ^
-            $alpha = [Math]::Min(255, $alpha + 20); ^
-            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null; ^
-            Start-Sleep -Milliseconds 180; ^
-        }} ^
-        if ($alt -and $down) {{ ^
-            $alpha = [Math]::Max(95, $alpha - 20); ^
-            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null; ^
-            Start-Sleep -Milliseconds 180; ^
-        }} ^
-    }} ^
-    Start-Sleep -Milliseconds 45; ^
-}}"
+
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+
+public class Win32Overlay {{
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder strText, int maxCount);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    [DllImport("user32.dll")] public static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+
+    public static IntPtr FoundHandle = IntPtr.Zero;
+    public static IntPtr FindAgalar() {{
+        FoundHandle = IntPtr.Zero;
+        EnumWindows((hWnd, lParam) => {{
+            if (!IsWindowVisible(hWnd)) return true;
+            StringBuilder sb = new StringBuilder(256);
+            GetWindowText(hWnd, sb, 256);
+            string title = sb.ToString();
+            if (title.IndexOf("AGALAR SESL", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                title.IndexOf("ASISTANI", StringComparison.OrdinalIgnoreCase) < 0) {{
+                FoundHandle = hWnd;
+                return false;
+            }}
+            return true;
+        }}, IntPtr.Zero);
+        return FoundHandle;
+    }}
+}}
+'@
+
+$GWL_EXSTYLE = -20
+$WS_EX_LAYERED = 0x80000
+$WS_EX_TRANSPARENT = 0x20
+$LWA_ALPHA = 0x2
+$HWND_TOPMOST = [IntPtr]::new(-1)
+$SWP_NOMOVE = 0x0002
+$SWP_NOSIZE = 0x0001
+$SWP_SHOWWINDOW = 0x0040
+
+$alpha = 225
+$visible = $true
+$ghost = $false
+$targetHwnd = [IntPtr]::Zero
+
+Write-Host "  [BEKLENIYOR] Agalar penceresi araniyor..." -ForegroundColor Yellow
+
+while ($true) {{
+    if ($targetHwnd -eq [IntPtr]::Zero -or -not [Win32Overlay]::IsWindow($targetHwnd)) {{
+        $found = [Win32Overlay]::FindAgalar()
+        if ($found -ne [IntPtr]::Zero) {{
+            $targetHwnd = $found
+            $style = [Win32Overlay]::GetWindowLong($targetHwnd, $GWL_EXSTYLE)
+            [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -bor $WS_EX_LAYERED)) | Out-Null
+            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null
+            [Win32Overlay]::SetWindowPos($targetHwnd, $HWND_TOPMOST, 0, 0, 0, 0, ($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)) | Out-Null
+            Write-Host "  [AKTIF] Agalar penceresi yakalandi! Seffaf & Her Zaman Ustte (TopMost) devrede." -ForegroundColor Green
+        }}
+    }} else {{
+        $shift = ([Win32Overlay]::GetAsyncKeyState(0x10) -band 0x8000) -ne 0
+        $tab   = ([Win32Overlay]::GetAsyncKeyState(0x09) -band 0x8000) -ne 0
+        $alt   = ([Win32Overlay]::GetAsyncKeyState(0x12) -band 0x8000) -ne 0
+        $keyQ  = ([Win32Overlay]::GetAsyncKeyState(0x51) -band 0x8000) -ne 0
+        $keyG  = ([Win32Overlay]::GetAsyncKeyState(0x47) -band 0x8000) -ne 0
+        $up    = ([Win32Overlay]::GetAsyncKeyState(0x26) -band 0x8000) -ne 0
+        $down  = ([Win32Overlay]::GetAsyncKeyState(0x28) -band 0x8000) -ne 0
+
+        if (($shift -and $tab) -or ($alt -and $keyQ)) {{
+            $visible = -not $visible
+            if ($visible) {{
+                [Win32Overlay]::ShowWindow($targetHwnd, 9) | Out-Null
+                [Win32Overlay]::SetWindowPos($targetHwnd, $HWND_TOPMOST, 0, 0, 0, 0, ($SWP_NOMOVE -bor $SWP_NOSIZE -bor $SWP_SHOWWINDOW)) | Out-Null
+                [Win32Overlay]::SetForegroundWindow($targetHwnd) | Out-Null
+            }} else {{
+                [Win32Overlay]::ShowWindow($targetHwnd, 6) | Out-Null
+            }}
+            Start-Sleep -Milliseconds 350
+        }}
+
+        if ($alt -and $keyG) {{
+            $ghost = -not $ghost
+            $style = [Win32Overlay]::GetWindowLong($targetHwnd, $GWL_EXSTYLE)
+            if ($ghost) {{
+                [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -bor $WS_EX_LAYERED -bor $WS_EX_TRANSPARENT)) | Out-Null
+                [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, 165, $LWA_ALPHA) | Out-Null
+                Write-Host "  [HAYALET MOD ACIK] Tiklamalar oyuna geciyor (Alt+G ile kapatilir)" -ForegroundColor Yellow
+            }} else {{
+                [Win32Overlay]::SetWindowLong($targetHwnd, $GWL_EXSTYLE, ($style -band (-bnot $WS_EX_TRANSPARENT))) | Out-Null
+                [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null
+                Write-Host "  [HAYALET MOD KAPALI] Pencere tekrar tiklanabilir" -ForegroundColor Green
+            }}
+            Start-Sleep -Milliseconds 350
+        }}
+
+        if ($alt -and $up) {{
+            $alpha = [Math]::Min(255, $alpha + 20)
+            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null
+            Start-Sleep -Milliseconds 180
+        }}
+
+        if ($alt -and $down) {{
+            $alpha = [Math]::Max(95, $alpha - 20)
+            [Win32Overlay]::SetLayeredWindowAttributes($targetHwnd, 0, $alpha, $LWA_ALPHA) | Out-Null
+            Start-Sleep -Milliseconds 180
+        }}
+    }}
+    Start-Sleep -Milliseconds 45
+}}
 """
     return Response(
         content=bat_content.encode("utf-8"),
@@ -1123,7 +1177,9 @@ async def websocket_endpoint(
     nickname: str = Query("Misafir"),
     avatar_color: str = Query("#5865F2"),
     voice_channel: str = Query("channel-1"),
-    password: Optional[str] = Query(None)
+    password: Optional[str] = Query(None),
+    is_muted: bool = Query(False),
+    is_deafened: bool = Query(False)
 ):
     await websocket.accept()
     room = manager.get_room(room_id)
@@ -1178,6 +1234,11 @@ async def websocket_endpoint(
         except Exception:
             pass
 
+    # Kalıcı sunucu susturma listesi (user_id bazlı: odadan çıkıp girse de korunur)
+    server_muted_uids = room.setdefault("server_muted_user_ids", set())
+    is_srv_muted = user_id in server_muted_uids
+    eff_muted = bool(is_muted or is_deafened or is_srv_muted)
+
     # Add client to room with role & moderation permissions
     room["participants"][client_id] = {
         "websocket": websocket,
@@ -1190,9 +1251,9 @@ async def websocket_endpoint(
         "can_kick": can_kick,
         "can_move": can_move,
         "can_manage_roles": can_manage_roles,
-        "is_server_muted": False,
-        "is_muted": False,
-        "is_deafened": False,
+        "is_server_muted": is_srv_muted,
+        "is_muted": eff_muted,
+        "is_deafened": bool(is_deafened),
         "is_speaking": False,
         "custom_status": ""
     }
@@ -1237,9 +1298,11 @@ async def websocket_endpoint(
             "can_manage_roles": can_manage_roles
         },
         "your_voice_channel": voice_channel,
+        "is_server_muted": is_srv_muted,
         "users": existing_users,
         "history": history,
-        "shared_browser": room.get("shared_browser", {})
+        "shared_browser": room.get("shared_browser", {}),
+        "active_poll": room.get("active_poll")
     }))
 
     # 2. Notify existing users that new user joined
@@ -1257,9 +1320,9 @@ async def websocket_endpoint(
             "can_kick": can_kick,
             "can_move": can_move,
             "can_manage_roles": can_manage_roles,
-            "is_server_muted": False,
-            "is_muted": False,
-            "is_deafened": False,
+            "is_server_muted": is_srv_muted,
+            "is_muted": eff_muted,
+            "is_deafened": bool(is_deafened),
             "is_speaking": False,
             "custom_status": ""
         },
@@ -1351,6 +1414,7 @@ async def websocket_endpoint(
                         "image_url": image_url,
                         "is_private": is_private,
                         "target_id": target_id,
+                        "reply_to": message.get("reply_to"),
                         "timestamp": saved["timestamp"]
                     }
 
@@ -1404,6 +1468,13 @@ async def websocket_endpoint(
                             }))
                         else:
                             target_rec["is_server_muted"] = mute_state
+                            target_uid = target_rec.get("user_id")
+                            muted_uids = room.setdefault("server_muted_user_ids", set())
+                            if target_uid:
+                                if mute_state:
+                                    muted_uids.add(target_uid)
+                                else:
+                                    muted_uids.discard(target_uid)
                             if mute_state:
                                 target_rec["is_muted"] = True
                                 target_rec["is_speaking"] = False
@@ -1582,7 +1653,8 @@ async def websocket_endpoint(
                         {
                             "type": "user-nickname-changed",
                             "client_id": client_id,
-                            "nickname": new_nick
+                            "nickname": new_nick,
+                            "new_nickname": new_nick
                         }
                     )
                     await manager.broadcast_to_room(
@@ -1743,7 +1815,8 @@ async def websocket_endpoint(
                     )
 
             elif msg_type == "user-status-change":
-                status_text = message.get("status", "").strip()[:45]
+                raw_status = message.get("custom_status") if "custom_status" in message else message.get("status", "")
+                status_text = (raw_status or "").strip()[:50]
                 user_record = room["participants"].get(client_id)
                 if user_record:
                     user_record["custom_status"] = status_text
@@ -1753,7 +1826,8 @@ async def websocket_endpoint(
                             "type": "user-status-updated",
                             "client_id": client_id,
                             "nickname": nickname,
-                            "status": status_text
+                            "status": status_text,
+                            "custom_status": status_text
                         }
                     )
 
@@ -1768,6 +1842,7 @@ async def websocket_endpoint(
                         {
                             "type": "soundboard-played",
                             "client_id": client_id,
+                            "sender_id": client_id,
                             "nickname": nickname,
                             "voice_channel": user_record.get("voice_channel", "channel-1"),
                             "sound_id": sound_id,
@@ -1777,18 +1852,86 @@ async def websocket_endpoint(
                     )
 
             elif msg_type == "live-reaction":
-                emoji = message.get("emoji", "🔥").strip()[:8]
+                emoji = message.get("emoji", "🔥").strip()[:12]
                 if emoji:
                     await manager.broadcast_to_room(
                         room_id,
                         {
                             "type": "live-reaction",
                             "client_id": client_id,
+                            "sender_id": client_id,
                             "nickname": nickname,
                             "avatar_color": avatar_color,
                             "emoji": emoji
                         }
                     )
+
+            elif msg_type == "chat-react":
+                msg_id = message.get("msg_id")
+                emoji = (message.get("emoji") or "").strip()[:12]
+                if msg_id and emoji:
+                    reactions_map = room.setdefault("msg_reactions", {})
+                    msg_reacts = reactions_map.setdefault(str(msg_id), {})
+                    users_set = msg_reacts.setdefault(emoji, set())
+                    if client_id in users_set:
+                        users_set.discard(client_id)
+                    else:
+                        users_set.add(client_id)
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "chat-reaction-updated",
+                            "msg_id": str(msg_id),
+                            "reactions": {k: len(v) for k, v in msg_reacts.items() if len(v) > 0}
+                        }
+                    )
+
+            elif msg_type == "room-poll-create":
+                question = (message.get("question") or "").strip()[:120]
+                raw_opts = message.get("options") or []
+                options = [str(o).strip()[:50] for o in raw_opts if str(o).strip()][:5]
+                if question and len(options) >= 2:
+                    poll = {
+                        "id": f"poll_{int(time.time() * 1000)}",
+                        "question": question,
+                        "creator": nickname,
+                        "options": [{"text": o, "votes": []} for o in options]
+                    }
+                    room["active_poll"] = poll
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "room-poll-updated",
+                            "poll": poll
+                        }
+                    )
+
+            elif msg_type == "room-poll-vote":
+                poll = room.get("active_poll")
+                opt_idx = message.get("option_index")
+                if poll and isinstance(opt_idx, int) and 0 <= opt_idx < len(poll["options"]):
+                    voter_key = str(user_id or client_id)
+                    for o in poll["options"]:
+                        if voter_key in o["votes"]:
+                            o["votes"].remove(voter_key)
+                    poll["options"][opt_idx]["votes"].append(voter_key)
+                    await manager.broadcast_to_room(
+                        room_id,
+                        {
+                            "type": "room-poll-updated",
+                            "poll": poll
+                        }
+                    )
+
+            elif msg_type == "room-poll-close":
+                room["active_poll"] = None
+                await manager.broadcast_to_room(
+                    room_id,
+                    {
+                        "type": "room-poll-updated",
+                        "poll": None
+                    }
+                )
 
             elif msg_type == "nudge-user":
                 target_id = message.get("target_id")
@@ -1801,6 +1944,7 @@ async def websocket_endpoint(
                             "type": "user-nudged",
                             "from_id": client_id,
                             "from_name": nickname,
+                            "from_nickname": nickname,
                             "note": note
                         }
                     )
