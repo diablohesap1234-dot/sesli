@@ -1,27 +1,32 @@
 :root {
-    --bg-main: #0b0c10;
-    --bg-surface: #13151f;
-    --bg-card: rgba(23, 26, 36, 0.75);
-    --bg-card-hover: rgba(33, 37, 52, 0.88);
-    --bg-input: #1b1e28;
-    --border-color: rgba(255, 255, 255, 0.08);
-    --border-highlight: rgba(88, 101, 242, 0.5);
+    --bg-main: #08090e;
+    --bg-primary: #08090e;
+    --bg-surface: rgba(15, 17, 26, 0.88);
+    --bg-secondary: rgba(15, 17, 26, 0.88);
+    --bg-tertiary: rgba(24, 27, 42, 0.92);
+    --bg-card: rgba(20, 23, 36, 0.72);
+    --bg-card-hover: rgba(30, 34, 52, 0.9);
+    --bg-input: rgba(22, 25, 38, 0.92);
+    --border-color: rgba(255, 255, 255, 0.085);
+    --border-highlight: rgba(99, 102, 241, 0.55);
 
-    --primary: #5865f2;
-    --primary-hover: #4752c4;
-    --accent: #5865f2;
-    --accent-gradient: linear-gradient(135deg, #5865f2 0%, #7b68ee 50%, #eb459e 100%);
-    --success: #23a55a;
-    --danger: #f23f43;
-    --warning: #fee75c;
+    --primary: #6366f1;
+    --primary-hover: #4f46e5;
+    --accent: #6366f1;
+    --accent-hover: #4f46e5;
+    --accent-glow: rgba(99, 102, 241, 0.42);
+    --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 52%, #ec4899 100%);
+    --success: #22c55e;
+    --danger: #ef4444;
+    --warning: #facc15;
 
-    --text-primary: #f8f9fa;
-    --text-secondary: #9aa0a9;
-    --text-muted: #676d77;
+    --text-primary: #f8fafc;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
 
-    --radius-sm: 8px;
-    --radius-md: 14px;
-    --radius-lg: 20px;
+    --radius-sm: 10px;
+    --radius-md: 15px;
+    --radius-lg: 22px;
     --radius-full: 9999px;
 
     --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -733,21 +738,21 @@ input[type="password"]:focus,
     flex: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 14px 20px;
+    gap: 14px;
     overflow-y: auto;
     position: relative;
 }
 
 .voice-grid {
     display: grid;
-    gap: 20px;
+    gap: 18px;
     width: 100%;
     max-width: 1200px;
-    height: 100%;
-    max-height: 800px;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    margin: auto;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     align-content: center;
     justify-content: center;
 }
@@ -973,12 +978,15 @@ input[type="password"]:focus,
    YAZILI SOHBET ALANI (CHAT)
    ========================================================================== */
 .chat-section {
-    width: 340px;
+    width: 356px;
     background: var(--bg-surface);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border-left: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+    position: relative;
     transition: var(--transition);
 }
 
@@ -1874,14 +1882,17 @@ input[type="password"]:focus,
    ========================================================================== */
 .chat-emoji-picker {
     position: absolute;
-    bottom: 60px;
+    bottom: 68px;
     right: 12px;
-    width: 290px;
-    background: #18191c;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    width: 312px;
+    max-width: calc(100% - 24px);
+    background: rgba(16, 18, 28, 0.96);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: var(--radius-md);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
-    z-index: 100;
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.78);
+    z-index: 250;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -4884,36 +4895,60 @@ body.desktop-mode.compact-mode .user-avatar {
    NEXT-GEN TEMA MOTORU & MODERN GLASSMORPHISM (2026 PRO DESIGN)
    ========================================================================== */
 body[data-theme="cyber"] {
-    --bg-primary: #090514;
-    --bg-secondary: #120924;
-    --bg-tertiary: #1b0e36;
+    --bg-main: #080412;
+    --bg-primary: #080412;
+    --bg-surface: rgba(16, 8, 34, 0.9);
+    --bg-secondary: rgba(16, 8, 34, 0.9);
+    --bg-tertiary: rgba(27, 14, 54, 0.92);
+    --bg-input: rgba(24, 12, 46, 0.95);
     --bg-card: rgba(28, 14, 56, 0.78);
+    --bg-card-hover: rgba(42, 20, 82, 0.9);
+    --primary: #d946ef;
+    --primary-hover: #c026d3;
     --accent: #d946ef;
     --accent-hover: #c026d3;
-    --accent-glow: rgba(217, 70, 239, 0.42);
-    --border-color: rgba(217, 70, 239, 0.22);
+    --accent-glow: rgba(217, 70, 239, 0.45);
+    --accent-gradient: linear-gradient(135deg, #d946ef 0%, #8b5cf6 52%, #06b6d4 100%);
+    --border-color: rgba(217, 70, 239, 0.24);
+    --border-highlight: rgba(217, 70, 239, 0.65);
 }
 
 body[data-theme="emerald"] {
-    --bg-primary: #04110c;
-    --bg-secondary: #081c15;
-    --bg-tertiary: #0d281e;
+    --bg-main: #030e0a;
+    --bg-primary: #030e0a;
+    --bg-surface: rgba(7, 24, 18, 0.9);
+    --bg-secondary: rgba(7, 24, 18, 0.9);
+    --bg-tertiary: rgba(13, 40, 30, 0.92);
+    --bg-input: rgba(10, 32, 24, 0.95);
     --bg-card: rgba(13, 40, 30, 0.78);
+    --bg-card-hover: rgba(18, 56, 42, 0.9);
+    --primary: #10b981;
+    --primary-hover: #059669;
     --accent: #10b981;
     --accent-hover: #059669;
-    --accent-glow: rgba(16, 185, 129, 0.4);
-    --border-color: rgba(16, 185, 129, 0.22);
+    --accent-glow: rgba(16, 185, 129, 0.42);
+    --accent-gradient: linear-gradient(135deg, #10b981 0%, #06b6d4 52%, #3b82f6 100%);
+    --border-color: rgba(16, 185, 129, 0.24);
+    --border-highlight: rgba(16, 185, 129, 0.65);
 }
 
 body[data-theme="crimson"] {
-    --bg-primary: #120608;
-    --bg-secondary: #1c0a0e;
-    --bg-tertiary: #280f15;
+    --bg-main: #100507;
+    --bg-primary: #100507;
+    --bg-surface: rgba(26, 9, 13, 0.9);
+    --bg-secondary: rgba(26, 9, 13, 0.9);
+    --bg-tertiary: rgba(40, 15, 21, 0.92);
+    --bg-input: rgba(34, 11, 16, 0.95);
     --bg-card: rgba(40, 15, 21, 0.78);
+    --bg-card-hover: rgba(58, 20, 28, 0.9);
+    --primary: #f43f5e;
+    --primary-hover: #e11d48;
     --accent: #f43f5e;
     --accent-hover: #e11d48;
-    --accent-glow: rgba(244, 63, 94, 0.42);
-    --border-color: rgba(244, 63, 94, 0.22);
+    --accent-glow: rgba(244, 63, 94, 0.45);
+    --accent-gradient: linear-gradient(135deg, #f43f5e 0%, #fb7185 52%, #f59e0b 100%);
+    --border-color: rgba(244, 63, 94, 0.24);
+    --border-highlight: rgba(244, 63, 94, 0.65);
 }
 
 /* Üst Bar Tema Değiştirici Buton */
@@ -5383,31 +5418,52 @@ body[data-theme="crimson"] {
     overflow: hidden;
 }
 
-.floating-emoji-item {
+.floating-emoji-item,
+.floating-reaction-item {
     position: absolute;
-    bottom: 85px;
+    bottom: 90px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    animation: floatUpEmoji 3.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45));
+    gap: 3px;
+    animation: floatUpEmoji 2.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
 }
 
-.floating-emoji-char {
-    font-size: 34px;
+.floating-emoji-char,
+.floating-reaction-item > span:first-child {
+    font-size: 38px;
     line-height: 1;
 }
 
-.floating-emoji-sender {
-    font-size: 10.5px;
+.floating-emoji-sender,
+.floating-reaction-nick {
+    font-size: 11px;
     font-weight: 800;
-    padding: 2px 7px;
+    padding: 2px 8px;
     border-radius: 999px;
-    background: rgba(15, 17, 26, 0.85);
+    background: rgba(15, 17, 26, 0.88);
     color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     white-space: nowrap;
+}
+
+.user-card-reaction-burst {
+    position: absolute;
+    top: -12px;
+    right: 14px;
+    font-size: 28px;
+    z-index: 25;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+    animation: burstPop 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes burstPop {
+    0% { opacity: 0; transform: translateY(10px) scale(0.4); }
+    18% { opacity: 1; transform: translateY(-4px) scale(1.25); }
+    75% { opacity: 1; transform: translateY(-10px) scale(1); }
+    100% { opacity: 0; transform: translateY(-24px) scale(0.8); }
 }
 
 @keyframes floatUpEmoji {
@@ -5435,19 +5491,26 @@ body[data-theme="crimson"] {
     gap: 10px;
     padding: 11px 16px;
     border-radius: 14px;
-    background: rgba(18, 20, 30, 0.92);
+    background: rgba(14, 16, 26, 0.94);
     border: 1px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(16px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
     color: #fff;
     font-size: 13px;
     font-weight: 600;
     animation: toastSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.agalar-toast.nudge {
-    border-color: rgba(250, 204, 21, 0.6);
-    box-shadow: 0 12px 32px rgba(250, 204, 21, 0.25);
+.agalar-toast.nudge,
+.agalar-toast.toast-nudge {
+    border-color: rgba(250, 204, 21, 0.65);
+    box-shadow: 0 12px 32px rgba(250, 204, 21, 0.28);
+}
+
+.agalar-toast.toast-soundboard {
+    border-color: rgba(139, 92, 246, 0.6);
+    box-shadow: 0 12px 32px rgba(139, 92, 246, 0.25);
 }
 
 @keyframes toastSlideIn {
@@ -5765,3 +5828,508 @@ body.steam-overlay-mode .user-card.speaking {
 
 
 
+
+
+/* ==========================================================================
+   OBSIDIAN GLASSMORPHISM ARAYÜZ YENİLEMESİ & YENİ ÖZELLİK BİLEŞENLERİ (v12)
+   ========================================================================== */
+body {
+    background-color: var(--bg-main);
+    background-image:
+        radial-gradient(circle at 12% 14%, var(--accent-glow) 0%, transparent 38%),
+        radial-gradient(circle at 88% 82%, rgba(236, 72, 153, 0.14) 0%, transparent 42%);
+    background-attachment: fixed;
+    transition: background-color 0.3s ease;
+}
+
+/* Lobi Kartı Yenilemesi */
+.lobby-card {
+    background: rgba(14, 16, 25, 0.82);
+    backdrop-filter: blur(26px);
+    -webkit-backdrop-filter: blur(26px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+/* Oda Navbar & Süre Sayacı */
+.room-navbar {
+    background: var(--bg-surface);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+.call-timer-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #86efac;
+    font-size: 12px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.3px;
+}
+
+.timer-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 8px #22c55e;
+    animation: pulseLiveDot 1.6s ease-in-out infinite;
+}
+
+@keyframes pulseLiveDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.8); }
+}
+
+/* Sol Kenar Çubuğu & Ses/Gizlilik Özeti Kartı */
+.channels-sidebar {
+    background: var(--bg-surface);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-right: 1px solid var(--border-color);
+}
+
+.sidebar-footer-card {
+    margin: auto 10px 10px;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sfc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.sfc-label {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.sfc-badge {
+    font-size: 10.5px;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(34, 197, 94, 0.16);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.sfc-badge.warn {
+    background: rgba(250, 204, 21, 0.16);
+    color: #fde047;
+    border-color: rgba(250, 204, 21, 0.35);
+}
+
+.sfc-badge.danger {
+    background: rgba(239, 68, 68, 0.18);
+    color: #fca5a5;
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+.sfc-subtext {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.btn-sfc-reset {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-sfc-reset:hover {
+    background: rgba(255, 255, 255, 0.11);
+    color: var(--text-primary);
+    border-color: var(--primary);
+}
+
+/* Modern Üye Kartları & Tek Tıkla Kişi Susturma + Dürtme */
+.user-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.22s ease;
+}
+
+.user-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.45);
+}
+
+.user-card.speaking {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.35), 0 16px 38px rgba(34, 197, 94, 0.22);
+}
+
+.btn-peer-local-mute {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: var(--transition);
+}
+
+.btn-peer-local-mute:hover {
+    background: rgba(255, 255, 255, 0.14);
+    transform: scale(1.06);
+}
+
+.btn-peer-local-mute.is-muted,
+.btn-peer-local-mute.local-muted {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.55);
+    color: #fca5a5;
+}
+
+.card-nudge-shake {
+    animation: nudgeShake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    border-color: #facc15 !important;
+    box-shadow: 0 0 28px rgba(250, 204, 21, 0.45) !important;
+}
+
+@keyframes nudgeShake {
+    10%, 90% { transform: translate3d(-3px, 0, 0) rotate(-1deg); }
+    20%, 80% { transform: translate3d(5px, 0, 0) rotate(1.5deg); }
+    30%, 50%, 70% { transform: translate3d(-6px, 0, 0) rotate(-1.5deg); }
+    40%, 60% { transform: translate3d(6px, 0, 0) rotate(1deg); }
+}
+
+/* Alt Kontrol Paneli (Dock) */
+.room-control-dock {
+    background: var(--bg-surface);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Sohbet Yanıtlama / Alıntı ve Mesaj Reaksiyonları */
+.chat-reply-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 14px;
+    background: rgba(99, 102, 241, 0.12);
+    border-top: 1px solid rgba(99, 102, 241, 0.35);
+    border-left: 3px solid var(--primary);
+}
+
+.chat-reply-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+}
+
+.chat-reply-label {
+    font-size: 11.5px;
+    color: var(--text-primary);
+}
+
+.chat-reply-snippet {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.btn-cancel-reply {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px 7px;
+    border-radius: 6px;
+}
+
+.btn-cancel-reply:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.chat-msg {
+    position: relative;
+    transition: background-color 0.15s ease;
+    border-radius: 10px;
+    padding: 6px 8px;
+}
+
+.chat-msg:hover {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.msg-hover-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.chat-msg:hover .msg-hover-actions,
+.chat-msg:focus-within .msg-hover-actions {
+    opacity: 1;
+}
+
+.msg-action-btn {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    padding: 2px 5px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.msg-action-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    transform: scale(1.1);
+}
+
+.msg-quote-box {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 5px 9px;
+    margin: 4px 0 5px;
+    border-left: 2.5px solid var(--primary);
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 0 8px 8px 0;
+    font-size: 11.5px;
+}
+
+.msg-quote-author {
+    font-weight: 700;
+    color: var(--primary);
+    font-size: 11px;
+}
+
+.msg-quote-text {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.msg-reactions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 6px;
+}
+
+.msg-reaction-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.14);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    color: var(--text-primary);
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.msg-reaction-pill:hover {
+    background: rgba(99, 102, 241, 0.28);
+    transform: translateY(-1px);
+}
+
+/* Hızlı Oda Anketi Çekmecesi & Canlı Anket Kartı */
+.poll-create-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.poll-options-inputs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.poll-create-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.active-poll-banner {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(20, 24, 39, 0.86);
+    backdrop-filter: blur(18px);
+    border: 1px solid var(--border-highlight);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.poll-banner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.poll-banner-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.poll-badge {
+    font-size: 10.5px;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--accent-gradient);
+    color: #fff;
+}
+
+.poll-meta {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+}
+
+.btn-poll-close {
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.btn-poll-close:hover {
+    background: rgba(239, 68, 68, 0.3);
+}
+
+.poll-options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.poll-option-btn {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    transition: border-color 0.18s ease;
+}
+
+.poll-option-btn:hover {
+    border-color: var(--primary);
+}
+
+.poll-option-btn.voted {
+    border-color: #22c55e;
+}
+
+.poll-option-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: rgba(99, 102, 241, 0.24);
+    pointer-events: none;
+    transition: width 0.3s ease;
+}
+
+.poll-option-btn.voted .poll-option-fill {
+    background: rgba(34, 197, 94, 0.24);
+}
+
+.poll-option-text,
+.poll-option-stats {
+    position: relative;
+    z-index: 1;
+}
+
+.poll-option-stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .poll-options-inputs {
+        grid-template-columns: 1fr;
+    }
+    .call-timer-pill {
+        display: none;
+    }
+    .msg-hover-actions {
+        opacity: 1;
+    }
+    .voice-section {
+        padding: 10px;
+        gap: 10px;
+    }
+}
